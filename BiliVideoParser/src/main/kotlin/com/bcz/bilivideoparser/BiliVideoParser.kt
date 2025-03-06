@@ -12,15 +12,22 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.0.0"
+        version = "1.0.1"
 //      https://github.com/BestBcz
     )
 ) {
     override fun onEnable() {
         logger.info("Bilibili 视频解析插件已启用 - 开始加载")
 
+        Config.reload() // **加载配置**
+
         globalEventChannel().subscribeAlways<GroupMessageEvent> {
-            logger.info("收到群消息: ${this.message.content}") // 记录每条消息
+//            logger.info("收到群消息: ${this.message.content}") // 记录每条消息 暂时禁用
+            if (Config.logMessages) {
+                logger.info("收到群消息: ${this.message.content}") // **根据配置决定是否记录消息**
+            }
+
+            if (!Config.enableParsing) return@subscribeAlways // **如果解析被禁用，则直接返回**
 
             if (this.message.serializeToMiraiCode().startsWith("""[mirai:app""")) {
                 val gotRawData = this.message.content
