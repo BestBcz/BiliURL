@@ -19,3 +19,8 @@ dependencies {
     compileOnly("net.mamoe:mirai-console:2.15.0")
     implementation("com.google.code.gson:gson:2.8.2")
 }
+tasks.withType<Jar> {
+    from({
+        configurations.runtimeClasspath.get().filter { it.exists() }.map { zipTree(it) }
+    })
+}
