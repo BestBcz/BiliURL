@@ -1,1 +1,4 @@
 一个简易的解析QQ中分享的哔哩哔哩小程序地址的mirai插件
+
+如果需要使用pluginbuild 请使用./gradlew clean buildPlugin -x miraiPrepareMetadata 来防止miraiPrepareMetadata造成的报错
+理论上说普通build也可行
