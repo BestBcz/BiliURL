@@ -14,7 +14,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.0.2"
+        version = "1.0.3"
         //https://github.com/BestBcz/BiliURL
     )
 ) {
@@ -54,7 +54,7 @@ object BiliVideoParser : KotlinPlugin(
                 try {
                     val jsonData = Gson().fromJson(gotRawData, MiniAppJsonData::class.java)
                     if (jsonData.app == "com.tencent.miniapp_01" && jsonData.meta.detail_1.appid == "1109937557") {
-                        val videoTitle = jsonData.meta.detail_1.title // **获取视频标题**
+                        val videoTitle = jsonData.meta.detail_1.desc ?: "哔哩哔哩" // 标题获取
                         val shortUrl = jsonData.meta.detail_1.qqdocurl // **b23.tv 短链**
 
                         // **解析 BV 号**
@@ -66,9 +66,15 @@ object BiliVideoParser : KotlinPlugin(
                         } else {
                             "https://www.bilibili.com/video/$bvId/"
                         }
+                        val sanitizedTitle = videoTitle
+                            .replace("[", "【")
+                            .replace("]", "】")
+                            .trim() // 去除前后空格
 
-                        this.group.sendMessage("【${videoTitle}-哔哩哔哩】 $videoLink")
+                        this.group.sendMessage("【$sanitizedTitle - 哔哩哔哩】 $videoLink")
                         logger.info("Bilibili 小程序解析成功并发送，使用短链接: ${Config.useShortLink}, 解析到 BV 号: $bvId")
+                        logger.debug("原始desc字段值: ${jsonData.meta.detail_1.desc}")
+                        logger.debug("处理后标题: $sanitizedTitle")
                     }
                 } catch (e: Exception) {
                     logger.error("解析 Bilibili 小程序出错: ${e.message}")
@@ -92,7 +98,9 @@ data class MetaData(
 )
 
 data class DetailData(
-    val appid: String,
-    val title: String,
-    val qqdocurl: String
-)}
+        val appid: String,
+        val title: String, // 此字段为固定值"哔哩哔哩"
+        val qqdocurl: String,
+        val desc: String // 新增真实标题字段
+    )
+}
