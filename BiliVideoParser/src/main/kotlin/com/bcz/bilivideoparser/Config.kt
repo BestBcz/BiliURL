@@ -10,7 +10,7 @@ import kotlin.reflect.jvm.isAccessible
 
 object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
 
-    @ValueDescription("配置版本号，用于自动检测和更新旧版配置")
+    @ValueDescription("配置版本号，用于自动检测和更新旧版配置，请勿自行修改")
     var configVersion: Int by value(1)
 
     @ValueDescription("是否启用解析功能")
