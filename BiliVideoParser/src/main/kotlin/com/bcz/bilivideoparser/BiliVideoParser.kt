@@ -1,6 +1,9 @@
 package com.bcz.bilivideoparser
 
 import com.google.gson.Gson
+import net.mamoe.mirai.console.data.AutoSavePluginConfig
+import net.mamoe.mirai.console.data.PluginConfig
+import net.mamoe.mirai.console.data.value
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import net.mamoe.mirai.event.events.GroupMessageEvent
@@ -10,11 +13,12 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+
 object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.0.3"
+        version = "1.0.4"
         //https://github.com/BestBcz/BiliURL
     )
 ) {
@@ -40,7 +44,8 @@ object BiliVideoParser : KotlinPlugin(
     override fun onEnable() {
         logger.info("Bilibili 视频解析插件已启用 - 开始加载")
 
-        Config.reload() // **加载配置**
+        // 配置文件初始化
+        Config.reload()
 
         globalEventChannel().subscribeAlways<GroupMessageEvent> {
             if (Config.logMessages) {
