@@ -1,6 +1,11 @@
 ### Hi there 👋
 ### BiliVideoParser
 
+#### 正在开发中的功能
+
+- 发送视频详细信息（已完成|未测试）
+- 下载视频并发送（正在开发中|未测试）
+
 [![Github](https://img.shields.io/badge/-Github-000?style=flat&logo=Github&logoColor=white)](https://github.com/BestBcz)
 [![MiraiForum](https://img.shields.io/badge/Forum-Mirai?style=flat-square&label=Mirai
 )](https://mirai.mamoe.net/topic/2795/biliurl%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E8%A7%A3%E6%9E%90qq%E5%88%86%E4%BA%AB%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9%E5%B0%8F%E7%A8%8B%E5%BA%8F%E8%A7%86%E9%A2%91%E5%9C%B0%E5%9D%80%E7%9A%84%E5%B0%8F%E6%8F%92%E4%BB%B6)
