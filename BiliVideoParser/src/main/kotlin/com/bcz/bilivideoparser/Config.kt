@@ -5,8 +5,8 @@ import net.mamoe.mirai.console.data.PluginDataHolder
 import net.mamoe.mirai.console.data.PluginDataStorage
 import net.mamoe.mirai.console.data.ValueDescription
 import net.mamoe.mirai.console.data.value
-import kotlin.reflect.full.declaredFunctions
-import kotlin.reflect.jvm.isAccessible
+
+
 
 object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
 
@@ -22,8 +22,14 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("是否使用短链接（b23.tv）；若为 false 则使用长链接（bilibili.com）")
     var useShortLink: Boolean by value(true)
 
+    @ValueDescription("是否显示详细视频信息（包括up主、播放量、评论数、简介、点赞、收藏、投币、转发）")
+    var enableDetailedInfo: Boolean by value(true)
+
+    @ValueDescription("是否启用视频下载功能")
+    var enableDownload: Boolean by value(true)
+
     // 修改此常量以触发自动更新（当旧版配置的 configVersion 小于此值时，会立即更新并保存配置）
-    private const val CURRENT_CONFIG_VERSION = 2
+    private const val CURRENT_CONFIG_VERSION = 3
 
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {
         super.onInit(owner, storage)
