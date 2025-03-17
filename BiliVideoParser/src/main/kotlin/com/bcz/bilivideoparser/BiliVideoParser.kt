@@ -114,35 +114,7 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    fun convertVideoToMiraiCompatibleFormat(inputFile: File): File {
-        val outputFile = File(inputFile.parent, "converted_${inputFile.name}")
-        try {
-            val process = ProcessBuilder(
-                "ffmpeg", "-y",
-                "-i", "\"${inputFile.absolutePath}\"",
-                "-c:v", "libx264", "-c:a", "aac", "-strict", "experimental",
-                "-b:a", "128k", "-movflags", "+faststart",
-                "\"${outputFile.absolutePath}\""
-            )
-                .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.PIPE)
-                .start()
 
-            val reader = process.inputStream.bufferedReader()
-            reader.useLines { lines -> lines.forEach { logger.info(it) } }
-
-            if (!process.waitFor(60, TimeUnit.SECONDS)) {
-                process.destroy()
-                logger.warning("视频转换超时: ${inputFile.absolutePath}")
-                return inputFile
-            }
-
-            return if (outputFile.exists()) outputFile else inputFile
-        } catch (e: Exception) {
-            logger.error("视频转换失败: ${e.message}")
-            return inputFile
-        }
-    }
 
     fun downloadThumbnail(url: String): File? {
         logger.info("尝试下载封面图: $url")
@@ -272,15 +244,15 @@ object BiliVideoParser : KotlinPlugin(
             }
         }
 
-        val convertedVideo = convertVideoToMiraiCompatibleFormat(videoFile)
-        val thumbnailFile = generateVideoThumbnail(convertedVideo)
-        val videoResource = convertedVideo.toExternalResource("mp4")
+
+        val thumbnailFile = generateVideoThumbnail(videoFile) // 直接使用原始视频生成缩略图
+        val videoResource = videoFile.toExternalResource("mp4") // 跳过转码，直接使用下载的视频
         val thumbnailResource = thumbnailFile.toExternalResource("jpg")
 
         try {
-            val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, convertedVideo.name) // 修正参数顺序
+            val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
             group.sendMessage(shortVideo)
-            logger.info("✅ 视频短消息发送成功: ${convertedVideo.name}")
+            logger.info("✅ 视频短消息发送成功: ${videoFile.name}")
         } catch (e: Exception) {
             logger.error("⚠️ 视频发送失败: ${e.message}", e)
             group.sendMessage("⚠️ 视频发送失败: ${e.message}")
@@ -326,8 +298,8 @@ object BiliVideoParser : KotlinPlugin(
                             .replace("]", "】")
                             .trim()
 
-                        this.group.sendMessage("【$sanitizedTitle - 哔哩哔哩】 $videoLink")
-                        logger.info("Bilibili 小程序解析成功并发送，使用短链接: ${Config.useShortLink}, 解析到 BV 号: $bvId")
+                        var messageToSend = "【$sanitizedTitle - 哔哩哔哩】"
+                        logger.info("Bilibili 小程序解析成功并准备发送，使用短链接: ${Config.useShortLink}, 解析到 BV 号: $bvId")
                         logger.debug("原始desc字段值: ${jsonData.meta.detail_1.desc}")
                         logger.debug("处理后标题: $sanitizedTitle")
 
@@ -343,13 +315,20 @@ object BiliVideoParser : KotlinPlugin(
                                     appendLine("投币: ${details.stat.coin}   分享: ${details.stat.share}")
                                     appendLine("点赞: ${details.stat.like}")
                                     appendLine("简介: ${details.desc}")
+                                    appendLine("链接: $videoLink") // 整合链接到详细信息
                                 }
-                                this.group.sendMessage(detailMsg)
+                                messageToSend += "\n" + detailMsg // 合并消息
                                 thumbnailUrl = details.pic
                             } else {
                                 logger.warning("无法获取视频详细信息，BV号: $bvId")
+                                messageToSend += "\n链接: $videoLink" // 如果详情失败，仍添加链接
                             }
+                        } else {
+                            messageToSend += "\n链接: $videoLink" // 如果未启用详细信息，仅添加链接
                         }
+
+                        this.group.sendMessage(messageToSend) // 发送整合后的单条消息
+                        logger.info("消息发送完成")
 
                         logger.info("检查下载功能是否启用: enableDownload = ${Config.enableDownload}")
                         if (Config.enableDownload) {
@@ -379,6 +358,8 @@ object BiliVideoParser : KotlinPlugin(
         logger.info("Bilibili 视频解析插件已启用 - 加载完成")
     }
 }
+
+
 
 // 数据类映射小程序 JSON 结构
 data class MiniAppJsonData(val app: String, val meta: Meta) {
