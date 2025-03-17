@@ -19,23 +19,30 @@ import javax.imageio.ImageIO
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
+import java.nio.file.Paths
 
 
 
 
-@OptIn(MiraiInternalApi::class) // 允许使用 Mirai 内部 API
 object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.0.5"
+        version = "1.1.0"
         //https://github.com/BestBcz/BiliURL
     )
-)
+){
 
 
 
-{
+    // 定义下载目录
+    private val DOWNLOAD_DIR = Paths.get("bilidownload").toFile().apply {
+    if (!exists()) mkdirs() // 创建目录如果不存在
+    logger.info("下载目录已设置: ${absolutePath}")
+}
+
+
+
     // BV号重定向解析真实链接
     fun getRealBilibiliUrl(shortUrl: String): String {
         return try {
@@ -91,7 +98,7 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     fun downloadBiliVideo(bvId: String): File? {
-        val outputFile = File("downloaded_video_$bvId.mp4")
+        val outputFile = File(DOWNLOAD_DIR, "downloaded_video_$bvId.mp4")
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
             val process = ProcessBuilder(
@@ -114,11 +121,9 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-
-
     fun downloadThumbnail(url: String): File? {
         logger.info("尝试下载封面图: $url")
-        val outputFile = File("./thumbnail_${url.hashCode()}.jpg")
+        val outputFile = File(DOWNLOAD_DIR, "thumbnail_${url.hashCode()}.jpg")
         try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = 5000
@@ -146,10 +151,10 @@ object BiliVideoParser : KotlinPlugin(
     /**
      * 自动提取视频中间帧作为缩略图
      * - 调整分辨率为 1656x931，与 2.jpg 一致
-     * - 使用 mjpeg 编码，避免不兼容元数据
+     * - 使用 image2 格式，避免 singlejpeg 报错
      */
     fun generateVideoThumbnail(videoFile: File): File {
-        val thumbnailFile = File(videoFile.parent, "thumbnail.jpg")
+        val thumbnailFile = File(DOWNLOAD_DIR, "thumbnail.jpg")
         try {
             if (!videoFile.exists()) {
                 logger.error("❌ 视频文件不存在: ${videoFile.absolutePath}")
@@ -159,11 +164,12 @@ object BiliVideoParser : KotlinPlugin(
             val process = ProcessBuilder(
                 "ffmpeg", "-y",
                 "-i", videoFile.absolutePath,
-                "-vf", "thumbnail,scale=1656:931", // 保持分辨率 1656x931
+                "-vf", "thumbnail,scale=1656:931",
                 "-frames:v", "1",
                 "-c:v", "mjpeg",
                 "-q:v", "2",
-                "-f", "image2", // 替换 singlejpeg 为 image2
+                "-f", "image2",
+                "-strip",
                 thumbnailFile.absolutePath
             ).redirectErrorStream(true).start()
 
@@ -194,10 +200,10 @@ object BiliVideoParser : KotlinPlugin(
      * 生成默认缩略图（黑色 1656×931）
      */
     fun generateDefaultThumbnail(): File {
-        val defaultThumb = File("default_thumbnail.jpg")
+        val defaultThumb = File(DOWNLOAD_DIR, "default_thumbnail.jpg")
         if (!defaultThumb.exists()) {
             try {
-                val width = 1656 // 与 2.jpg 一致
+                val width = 1656
                 val height = 931
                 val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
                 val graphics = image.createGraphics()
@@ -226,14 +232,15 @@ object BiliVideoParser : KotlinPlugin(
         }
 
         // 下载并发送封面图（如果提供了 thumbnailUrl）
+        var downloadedThumbnail: File? = null
         if (thumbnailUrl != null) {
-            val thumbnailFile = downloadThumbnail(thumbnailUrl)
-            if (thumbnailFile != null) {
-                val thumbnailResource = thumbnailFile.toExternalResource("jpg")
+            downloadedThumbnail = downloadThumbnail(thumbnailUrl)
+            if (downloadedThumbnail != null) {
+                val thumbnailResource = downloadedThumbnail.toExternalResource("jpg")
                 try {
                     val imageMessage = group.uploadImage(thumbnailResource)
                     group.sendMessage(imageMessage)
-                    logger.info("✅ 封面图发送成功: ${thumbnailFile.absolutePath}")
+                    logger.info("✅ 封面图发送成功: ${downloadedThumbnail.absolutePath}")
                 } catch (e: Exception) {
                     logger.error("⚠️ 封面图发送失败: ${e.message}", e)
                 } finally {
@@ -244,9 +251,8 @@ object BiliVideoParser : KotlinPlugin(
             }
         }
 
-
-        val thumbnailFile = generateVideoThumbnail(videoFile) // 直接使用原始视频生成缩略图
-        val videoResource = videoFile.toExternalResource("mp4") // 跳过转码，直接使用下载的视频
+        val thumbnailFile = generateVideoThumbnail(videoFile)
+        val videoResource = videoFile.toExternalResource("mp4")
         val thumbnailResource = thumbnailFile.toExternalResource("jpg")
 
         try {
@@ -259,6 +265,10 @@ object BiliVideoParser : KotlinPlugin(
         } finally {
             videoResource.close()
             thumbnailResource.close()
+            // 删除相关文件
+            videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
+            thumbnailFile.delete().let { logger.info("删除缩略图文件: ${thumbnailFile.absolutePath}, 结果: $it") }
+            downloadedThumbnail?.delete()?.let { logger.info("删除下载的封面图: ${downloadedThumbnail.absolutePath}, 结果: $it") }
         }
     }
 
@@ -315,19 +325,19 @@ object BiliVideoParser : KotlinPlugin(
                                     appendLine("投币: ${details.stat.coin}   分享: ${details.stat.share}")
                                     appendLine("点赞: ${details.stat.like}")
                                     appendLine("简介: ${details.desc}")
-                                    appendLine("链接: $videoLink") // 整合链接到详细信息
+                                    appendLine("链接: $videoLink")
                                 }
-                                messageToSend += "\n" + detailMsg // 合并消息
+                                messageToSend += "\n" + detailMsg
                                 thumbnailUrl = details.pic
                             } else {
                                 logger.warning("无法获取视频详细信息，BV号: $bvId")
-                                messageToSend += "\n链接: $videoLink" // 如果详情失败，仍添加链接
+                                messageToSend += "\n链接: $videoLink"
                             }
                         } else {
-                            messageToSend += "\n链接: $videoLink" // 如果未启用详细信息，仅添加链接
+                            messageToSend += "\n链接: $videoLink"
                         }
 
-                        this.group.sendMessage(messageToSend) // 发送整合后的单条消息
+                        this.group.sendMessage(messageToSend)
                         logger.info("消息发送完成")
 
                         logger.info("检查下载功能是否启用: enableDownload = ${Config.enableDownload}")
@@ -358,8 +368,6 @@ object BiliVideoParser : KotlinPlugin(
         logger.info("Bilibili 视频解析插件已启用 - 加载完成")
     }
 }
-
-
 
 // 数据类映射小程序 JSON 结构
 data class MiniAppJsonData(val app: String, val meta: Meta) {
