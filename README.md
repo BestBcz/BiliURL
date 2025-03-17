@@ -50,9 +50,9 @@
 <summary>相关截图</summary>
 
 ![e1ffac4d-3043-4d6b-a814-d6be1497e997.png](https://mirai.mamoe.net/assets/uploads/files/1742203041642-356a4b0d-57b0-4a12-acac-8435e5e4aafa.png)
-![QQ_1742202849146.png](../../Desktop/QQ_1742202849146.png)
-![QQ_1742202875264.png](../../Desktop/QQ_1742202875264.png)
-![356a4b0d-57b0-4a12-acac-8435e5e4aafa.png](../../Desktop/356a4b0d-57b0-4a12-acac-8435e5e4aafa.png)
+![QQ_1742202849146.png](https://mirai.mamoe.net/assets/uploads/files/1742203056542-e1ffac4d-3043-4d6b-a814-d6be1497e997.png)
+![QQ_1742202875264.png](https://mirai.mamoe.net/assets/uploads/files/1742203072380-qq_1742202849146.png)
+![356a4b0d-57b0-4a12-acac-8435e5e4aafa.png](https://mirai.mamoe.net/assets/uploads/files/1742203161015-qq_1742202875264.png)
 
 </details>
 
