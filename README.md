@@ -18,8 +18,9 @@
 -  [FFmpeg](https://ffmpeg.org/download.html)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)
 - [Mirai-console 2.16版本或以上](https://github.com/mamoe/mirai/releases)
+> [!IMPORTANT]
+> _以上为下载视频功能必需依赖，其他功能无特定依赖前置_
 
-_以上为下载视频功能必需依赖，其他功能无特定依赖前置_
 
 ----------------------------------------
 
@@ -41,6 +42,19 @@ _以上为下载视频功能必需依赖，其他功能无特定依赖前置_
 - [x] 自动删除下载视频
 - [x] Config文件
 - [x] 长链接bilibili.com/video/BVxxx 和 短链接b23.tv/xxxx 的选择
+
+-----------------------------------------
+### 📷插件截图
+<details>
+
+<summary>相关截图</summary>
+
+![e1ffac4d-3043-4d6b-a814-d6be1497e997.png](https://mirai.mamoe.net/assets/uploads/files/1742203041642-356a4b0d-57b0-4a12-acac-8435e5e4aafa.png)
+![QQ_1742202849146.png](../../Desktop/QQ_1742202849146.png)
+![QQ_1742202875264.png](../../Desktop/QQ_1742202875264.png)
+![356a4b0d-57b0-4a12-acac-8435e5e4aafa.png](../../Desktop/356a4b0d-57b0-4a12-acac-8435e5e4aafa.png)
+
+</details>
 
 -------------------------------------
 
