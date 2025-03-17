@@ -17,8 +17,9 @@
 #### 🛠️依赖前置（请安装到你搭建机器人的服务器上）
 -  [FFmpeg](https://ffmpeg.org/download.html)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)
+- Mirai-console 2.16版本或以上
 
-_以上为下载视频功能必需依赖_
+_以上为下载视频功能必需依赖，其他功能无特定依赖前置_
 
 ----------------------------------------
 
