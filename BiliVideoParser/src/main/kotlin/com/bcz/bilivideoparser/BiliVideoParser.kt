@@ -148,53 +148,6 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    /**
-     * 自动提取视频中间帧作为缩略图
-     * - 调整分辨率为 1656x931，与 2.jpg 一致
-     * - 使用 image2 格式，避免 singlejpeg 报错
-     */
-    fun generateVideoThumbnail(videoFile: File): File {
-        val thumbnailFile = File(DOWNLOAD_DIR, "thumbnail.jpg")
-        try {
-            if (!videoFile.exists()) {
-                logger.error("❌ 视频文件不存在: ${videoFile.absolutePath}")
-                return generateDefaultThumbnail()
-            }
-
-            val process = ProcessBuilder(
-                "ffmpeg", "-y",
-                "-i", videoFile.absolutePath,
-                "-vf", "thumbnail,scale=1656:931",
-                "-frames:v", "1",
-                "-c:v", "mjpeg",
-                "-q:v", "2",
-                "-f", "image2",
-                "-strip",
-                thumbnailFile.absolutePath
-            ).redirectErrorStream(true).start()
-
-            process.inputStream.bufferedReader().useLines { lines -> lines.forEach { logger.info(it) } }
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroy()
-                throw Exception("FFmpeg 提取缩略图超时")
-            }
-
-            if (process.exitValue() != 0) {
-                logger.error("FFmpeg 退出码: ${process.exitValue()}")
-                throw Exception("FFmpeg 执行失败，退出码: ${process.exitValue()}")
-            }
-
-            return if (thumbnailFile.exists()) {
-                logger.info("✅ 缩略图生成成功: ${thumbnailFile.absolutePath}")
-                thumbnailFile
-            } else {
-                throw Exception("FFmpeg 未生成缩略图")
-            }
-        } catch (e: Exception) {
-            logger.warning("❌ FFmpeg 失败，使用默认缩略图: ${e.message}")
-            return generateDefaultThumbnail()
-        }
-    }
 
     /**
      * 生成默认缩略图（黑色 1656×931）
@@ -232,15 +185,15 @@ object BiliVideoParser : KotlinPlugin(
         }
 
         // 下载并发送封面图（如果提供了 thumbnailUrl）
-        var downloadedThumbnail: File? = null
+        var thumbnailFile: File? = null
         if (thumbnailUrl != null) {
-            downloadedThumbnail = downloadThumbnail(thumbnailUrl)
-            if (downloadedThumbnail != null) {
-                val thumbnailResource = downloadedThumbnail.toExternalResource("jpg")
+            thumbnailFile = downloadThumbnail(thumbnailUrl)
+            if (thumbnailFile != null) {
+                val thumbnailResource = thumbnailFile.toExternalResource("jpg")
                 try {
                     val imageMessage = group.uploadImage(thumbnailResource)
                     group.sendMessage(imageMessage)
-                    logger.info("✅ 封面图发送成功: ${downloadedThumbnail.absolutePath}")
+                    logger.info("✅ 封面图发送成功: ${thumbnailFile.absolutePath}")
                 } catch (e: Exception) {
                     logger.error("⚠️ 封面图发送失败: ${e.message}", e)
                 } finally {
@@ -251,9 +204,10 @@ object BiliVideoParser : KotlinPlugin(
             }
         }
 
-        val thumbnailFile = generateVideoThumbnail(videoFile)
+        // 使用下载的封面图作为缩略图，失败则使用默认缩略图
+        val thumbnailToUse = thumbnailFile ?: generateDefaultThumbnail()
         val videoResource = videoFile.toExternalResource("mp4")
-        val thumbnailResource = thumbnailFile.toExternalResource("jpg")
+        val thumbnailResource = thumbnailToUse.toExternalResource("jpg")
 
         try {
             val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
@@ -267,8 +221,8 @@ object BiliVideoParser : KotlinPlugin(
             thumbnailResource.close()
             // 删除相关文件
             videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
-            thumbnailFile.delete().let { logger.info("删除缩略图文件: ${thumbnailFile.absolutePath}, 结果: $it") }
-            downloadedThumbnail?.delete()?.let { logger.info("删除下载的封面图: ${downloadedThumbnail.absolutePath}, 结果: $it") }
+            thumbnailToUse.delete().let { logger.info("删除缩略图文件: ${thumbnailToUse.absolutePath}, 结果: $it") }
+            thumbnailFile?.delete()?.let { logger.info("删除下载的封面图: ${thumbnailFile.absolutePath}, 结果: $it") }
         }
     }
 
