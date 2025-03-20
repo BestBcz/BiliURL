@@ -20,6 +20,7 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Paths
+import net.mamoe.mirai.console.command.CommandManager
 
 
 
@@ -28,10 +29,16 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.1.0"
+        version = "1.1.2"
         //https://github.com/BestBcz/BiliURL
-    )
-){
+    ) {
+        author("Bcz")
+        // author 和 info 可以删除.
+    }
+)
+
+
+{
 
 
 
@@ -230,10 +237,10 @@ object BiliVideoParser : KotlinPlugin(
         logger.info("Bilibili 视频解析插件已启用 - 开始加载")
         Config.reload()
         logger.info("配置加载完成，enableParsing = ${Config.enableParsing}, enableDownload = ${Config.enableDownload}, enableDetailedInfo = ${Config.enableDetailedInfo}")
+        CommandManager.registerCommand(BiliVideoParserCommand) // 注册控制台指令
 
-        globalEventChannel().subscribeAlways<GroupMessageEvent> {
-            logger.info("收到群消息，原始内容: ${this.message.serializeToMiraiCode()}")
-            logger.info("消息文本内容: ${this.message.content}")
+        globalEventChannel().subscribeAlways<GroupMessageEvent> {   //收到群消息
+            //logger.info("收到群消息，原始内容: ${this.message.serializeToMiraiCode()}")
 
             if (!Config.enableParsing) {
                 logger.info("解析功能已禁用，跳过处理")
@@ -241,7 +248,7 @@ object BiliVideoParser : KotlinPlugin(
             }
 
             val miraiCode = this.message.serializeToMiraiCode()
-            logger.info("检查消息是否为小程序: $miraiCode")
+            //logger.info("检查消息是否为小程序: $miraiCode")
             if (miraiCode.startsWith("[mirai:app")) {
                 val gotRawData = this.message.content
                 logger.info("检测到小程序消息，尝试解析: $gotRawData")
@@ -294,9 +301,9 @@ object BiliVideoParser : KotlinPlugin(
                         this.group.sendMessage(messageToSend)
                         logger.info("消息发送完成")
 
-                        logger.info("检查下载功能是否启用: enableDownload = ${Config.enableDownload}")
+                        //logger.info("检查下载功能是否启用: enableDownload = ${Config.enableDownload}")
                         if (Config.enableDownload) {
-                            logger.info("下载功能已启用，开始下载视频: $bvId")
+                            logger.info("开始下载视频: $bvId")
                             val videoFile = downloadBiliVideo(bvId)
                             if (videoFile != null) {
                                 logger.info("视频文件下载成功: ${videoFile.absolutePath}")
@@ -309,13 +316,13 @@ object BiliVideoParser : KotlinPlugin(
                             logger.info("下载功能未启用，跳过下载")
                         }
                     } else {
-                        logger.info("小程序不是 Bilibili 的，跳过处理")
+                        //logger.info("小程序不是 Bilibili 的，跳过处理")
                     }
                 } catch (e: Exception) {
                     logger.error("解析 Bilibili 小程序出错: ${e.message}", e)
                 }
             } else {
-                logger.info("消息不是小程序，跳过处理")
+                //logger.info("消息不是小程序，跳过处理")
             }
         }
 
