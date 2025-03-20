@@ -27,7 +27,7 @@ object BiliVideoParserCommand : SimpleCommand(
 
         // 检查 LuckPerms 权限或 Config.adminQQs
         val commandPermission: Permission = this@BiliVideoParserCommand.permission
-        val hasLuckPermsPermission = this.hasPermission(commandPermission) // 直接使用扩展函数
+        val hasLuckPermsPermission = this.hasPermission(commandPermission)
         val hasPermission = isConsole || (userQQ != null && (Config.isAdmin(userQQ) || hasLuckPermsPermission))
 
         if (!hasPermission) {
@@ -36,31 +36,23 @@ object BiliVideoParserCommand : SimpleCommand(
         }
 
         if (option == null) {
-            sendMessage("用法: /bvp <option> <value>\n可用选项: " +
-
-"enable#开关插件, " +
-
-"shortlink#开关短连接, " +
-
-"Info#开关详细信息, " +
-
-"Download#开关下载视频, " +
-
-"addadmin#添加管理员, " +
-
-"removeadmin#移除管理员, " +
-
-"listadmins#管理员列表")
-
-            return
-        }
-        if (value == null) {
-            sendMessage("❌ 请提供值，例如: /bvp enable true")
+            sendMessage("用法: /bvp <option> [value]\n可用选项:\n" +
+                    "enable #开关插件\n" +
+                    "shortlink #开关短连接\n" +
+                    "Info #开关详细信息\n" +
+                    "Download #开关下载视频\n" +
+                    "addadmin #添加管理员\n" +
+                    "removeadmin #移除管理员\n" +
+                    "listadmins #管理员列表")
             return
         }
 
         when (option.lowercase()) {
             "enable" -> {
+                if (value == null) {
+                    sendMessage("❌ 请提供值，例如: /bvp enable true")
+                    return
+                }
                 val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
                 if (boolValue == null) {
                     sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
@@ -71,6 +63,10 @@ object BiliVideoParserCommand : SimpleCommand(
                 }
             }
             "shortlink" -> {
+                if (value == null) {
+                    sendMessage("❌ 请提供值，例如: /bvp shortlink true")
+                    return
+                }
                 val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
                 if (boolValue == null) {
                     sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
@@ -80,27 +76,39 @@ object BiliVideoParserCommand : SimpleCommand(
                     sendMessage("✅ 配置已更新：useShortLink = $boolValue")
                 }
             }
-            "Info" -> {
+            "info" -> {
+                if (value == null) {
+                    sendMessage("❌ 请提供值，例如: /bvp Info true")
+                    return
+                }
                 val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
                 if (boolValue == null) {
                     sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
                 } else {
                     Config.enableDetailedInfo = boolValue
                     Config.forceSave()
-                    sendMessage("✅ 配置已更新：useShortLink = $boolValue")
+                    sendMessage("✅ 配置已更新：enableDetailedInfo = $boolValue")
                 }
             }
-            "Download" -> {
+            "download" -> {
+                if (value == null) {
+                    sendMessage("❌ 请提供值，例如: /bvp Download true")
+                    return
+                }
                 val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
                 if (boolValue == null) {
                     sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
                 } else {
                     Config.enableDownload = boolValue
                     Config.forceSave()
-                    sendMessage("✅ 配置已更新：useShortLink = $boolValue")
+                    sendMessage("✅ 配置已更新：enableDownload = $boolValue")
                 }
             }
             "addadmin" -> {
+                if (value == null) {
+                    sendMessage("❌ 请提供 QQ 号，例如: /bvp addadmin 123456789")
+                    return
+                }
                 val qqNumber = value.toLongOrNull()
                 if (qqNumber == null || qqNumber <= 0) {
                     sendMessage("❌ 无效的 QQ 号：$value，应为正整数")
@@ -110,12 +118,11 @@ object BiliVideoParserCommand : SimpleCommand(
                     Config.adminQQs.add(qqNumber)
                     Config.forceSave()
                     sendMessage("✅ 已添加管理员：QQ $qqNumber")
-
                 }
             }
             "removeadmin" -> {
                 if (value == null) {
-                    sendMessage("❌ 请提供 QQ 号，例如: /bilivideoparser removeadmin 123456789")
+                    sendMessage("❌ 请提供 QQ 号，例如: /bvp removeadmin 123456789")
                     return
                 }
                 val qqNumber = value.toLongOrNull()
@@ -132,7 +139,6 @@ object BiliVideoParserCommand : SimpleCommand(
                 }
             }
             "listadmins" -> {
-                // 不需要 value，直接处理
                 if (Config.adminQQs.isEmpty()) {
                     sendMessage("当前没有管理员")
                 } else {
@@ -140,7 +146,7 @@ object BiliVideoParserCommand : SimpleCommand(
                     sendMessage("当前管理员列表：$admins")
                 }
             }
-            else -> sendMessage("❌ 未知配置项：$option，可用选项: enableparser, useshortlink, addadmin, removeadmin, listadmins")
+            else -> sendMessage("❌ 未知配置项：$option，可用选项: enable, shortlink, Info, Download, addadmin, removeadmin, listadmins")
         }
     }
 }
