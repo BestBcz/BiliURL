@@ -1,8 +1,12 @@
 package com.bcz.bilivideoparser
 
+import net.mamoe.mirai.console.command.*
+import net.mamoe.mirai.console.util.ConsoleExperimentalApi
+import net.mamoe.mirai.console.permission.Permission
+import net.mamoe.mirai.console.permission.PermissionService.Companion.hasPermission
+import net.mamoe.mirai.contact.User
 import net.mamoe.mirai.console.command.CommandSender
 import net.mamoe.mirai.console.command.SimpleCommand
-import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 
 @OptIn(ConsoleExperimentalApi::class)
 object BiliVideoParserCommand : SimpleCommand(
@@ -13,15 +17,18 @@ object BiliVideoParserCommand : SimpleCommand(
 ) {
     @Handler
     suspend fun CommandSender.handle(option: String? = null, value: String? = null) {
-        val isConsole = this is net.mamoe.mirai.console.command.ConsoleCommandSender
+        val isConsole = this is ConsoleCommandSender
         val userQQ = when (this) {
-            is net.mamoe.mirai.contact.User -> this.id // 直接是 User 的情况（例如好友或临时会话）
-            is net.mamoe.mirai.console.command.MemberCommandSender -> this.user.id // 群成员发送的命令
-            is net.mamoe.mirai.console.command.FriendCommandSender -> this.user.id // 好友发送的命令
-            else -> null // 其他情况（如控制台）
+            is User -> this.id
+            is MemberCommandSender -> this.user.id
+            is FriendCommandSender -> this.user.id
+            else -> null
         }
 
-        val hasPermission = isConsole || (userQQ != null && Config.isAdmin(userQQ))
+        // 检查 LuckPerms 权限或 Config.adminQQs
+        val commandPermission: Permission = this@BiliVideoParserCommand.permission
+        val hasLuckPermsPermission = this.hasPermission(commandPermission) // 直接使用扩展函数
+        val hasPermission = isConsole || (userQQ != null && (Config.isAdmin(userQQ) || hasLuckPermsPermission))
 
         if (!hasPermission) {
             sendMessage("⚠️ 你没有权限执行此命令")
@@ -125,6 +132,7 @@ object BiliVideoParserCommand : SimpleCommand(
                 }
             }
             "listadmins" -> {
+                // 不需要 value，直接处理
                 if (Config.adminQQs.isEmpty()) {
                     sendMessage("当前没有管理员")
                 } else {
@@ -132,7 +140,7 @@ object BiliVideoParserCommand : SimpleCommand(
                     sendMessage("当前管理员列表：$admins")
                 }
             }
-            else -> sendMessage("❌ 未知配置项：$option，可用选项: enableparser, useshortlink")
+            else -> sendMessage("❌ 未知配置项：$option，可用选项: enableparser, useshortlink, addadmin, removeadmin, listadmins")
         }
     }
 }
