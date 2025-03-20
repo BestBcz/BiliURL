@@ -30,13 +30,21 @@ object BiliVideoParserCommand : SimpleCommand(
 
         if (option == null) {
             sendMessage("用法: /bvp <option> <value>\n可用选项: " +
-                    "enable#开关插件, " +
-                    "shortlink#开关短连接, " +
-                    "Info#开关详细信息, " +
-                    "Download#开关下载视频, " +
-                    "addadmin#添加管理员, " +
-                    "removeadmin#移除管理员, " +
-                    "listadmins#管理员列表")
+
+"enable#开关插件, " +
+
+"shortlink#开关短连接, " +
+
+"Info#开关详细信息, " +
+
+"Download#开关下载视频, " +
+
+"addadmin#添加管理员, " +
+
+"removeadmin#移除管理员, " +
+
+"listadmins#管理员列表")
+
             return
         }
         if (value == null) {
