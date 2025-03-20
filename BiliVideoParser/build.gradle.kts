@@ -18,11 +18,8 @@ dependencies {
     compileOnly("net.mamoe:mirai-core:2.16.0")
     compileOnly("net.mamoe:mirai-console:2.16.0")
     implementation("com.google.code.gson:gson:2.8.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-io:0.1.16")
     implementation("com.squareup.okio:okio:3.7.0")
     implementation("net.mamoe:mirai-core-utils:2.16.0")
-    implementation("io.ktor:ktor-io:2.3.0")
-    implementation("io.ktor:ktor-io-jvm:2.3.0")
 }
 tasks.withType<Jar> {
     from({
