@@ -6,7 +6,6 @@ import net.mamoe.mirai.console.permission.Permission
 import net.mamoe.mirai.console.permission.PermissionService.Companion.hasPermission
 import net.mamoe.mirai.contact.User
 import net.mamoe.mirai.console.command.CommandSender
-import net.mamoe.mirai.console.command.SimpleCommand
 
 @OptIn(ConsoleExperimentalApi::class)
 object BiliVideoParserCommand : SimpleCommand(
@@ -25,7 +24,6 @@ object BiliVideoParserCommand : SimpleCommand(
             else -> null
         }
 
-        // 检查 LuckPerms 权限或 Config.adminQQs
         val commandPermission: Permission = this@BiliVideoParserCommand.permission
         val hasLuckPermsPermission = this.hasPermission(commandPermission)
         val hasPermission = isConsole || (userQQ != null && (Config.isAdmin(userQQ) || hasLuckPermsPermission))
@@ -36,108 +34,35 @@ object BiliVideoParserCommand : SimpleCommand(
         }
 
         if (option == null) {
-            sendMessage("用法: /bvp <option> [value]\n可用选项:\n" +
-                    "enable #开关插件\n" +
-                    "shortlink #开关短连接\n" +
-                    "Info #开关详细信息\n" +
-                    "Download #开关下载视频\n" +
-                    "addadmin #添加管理员\n" +
-                    "removeadmin #移除管理员\n" +
-                    "listadmins #管理员列表")
+            sendMessage(
+                """
+                用法: /bvp <option> [value]
+                可用选项:
+                enable # 开关插件
+                shortlink # 开关短链接
+                info # 开关详细信息
+                download # 开关下载视频
+                addadmin # 添加管理员
+                removeadmin # 移除管理员
+                listadmins # 管理员列表
+                addwhite # 添加群白名单
+                addblack # 添加群黑名单
+                removewhite # 移除白名单
+                removeblack # 移除黑名单
+                listgroups # 查看群组列表
+                """.trimIndent()
+            )
             return
         }
 
         when (option.lowercase()) {
-            "enable" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供值，例如: /bvp enable true")
-                    return
-                }
-                val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
-                if (boolValue == null) {
-                    sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
-                } else {
-                    Config.enableParsing = boolValue
-                    Config.forceSave()
-                    sendMessage("✅ 配置已更新：enableParsing = $boolValue")
-                }
-            }
-            "shortlink" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供值，例如: /bvp shortlink true")
-                    return
-                }
-                val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
-                if (boolValue == null) {
-                    sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
-                } else {
-                    Config.useShortLink = boolValue
-                    Config.forceSave()
-                    sendMessage("✅ 配置已更新：useShortLink = $boolValue")
-                }
-            }
-            "info" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供值，例如: /bvp Info true")
-                    return
-                }
-                val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
-                if (boolValue == null) {
-                    sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
-                } else {
-                    Config.enableDetailedInfo = boolValue
-                    Config.forceSave()
-                    sendMessage("✅ 配置已更新：enableDetailedInfo = $boolValue")
-                }
-            }
-            "download" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供值，例如: /bvp Download true")
-                    return
-                }
-                val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
-                if (boolValue == null) {
-                    sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
-                } else {
-                    Config.enableDownload = boolValue
-                    Config.forceSave()
-                    sendMessage("✅ 配置已更新：enableDownload = $boolValue")
-                }
-            }
-            "addadmin" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供 QQ 号，例如: /bvp addadmin 123456789")
-                    return
-                }
-                val qqNumber = value.toLongOrNull()
-                if (qqNumber == null || qqNumber <= 0) {
-                    sendMessage("❌ 无效的 QQ 号：$value，应为正整数")
-                } else if (Config.isAdmin(qqNumber)) {
-                    sendMessage("❌ QQ 号 $qqNumber 已存在于管理员列表")
-                } else {
-                    Config.adminQQs.add(qqNumber)
-                    Config.forceSave()
-                    sendMessage("✅ 已添加管理员：QQ $qqNumber")
-                }
-            }
-            "removeadmin" -> {
-                if (value == null) {
-                    sendMessage("❌ 请提供 QQ 号，例如: /bvp removeadmin 123456789")
-                    return
-                }
-                val qqNumber = value.toLongOrNull()
-                if (qqNumber == null || qqNumber <= 0) {
-                    sendMessage("❌ 无效的 QQ 号：$value，应为正整数")
-                } else if (!Config.isAdmin(qqNumber)) {
-                    sendMessage("❌ QQ 号 $qqNumber 不在管理员列表中")
-                } else if (Config.adminQQs.size <= 1) {
-                    sendMessage("❌ 无法移除最后一个管理员")
-                } else {
-                    Config.adminQQs.remove(qqNumber)
-                    Config.forceSave()
-                    sendMessage("✅ 已移除管理员：QQ $qqNumber")
-                }
-            }
+            "enable" -> updateBoolConfig("enableParsing", value) { Config.enableParsing = it }
+            "shortlink" -> updateBoolConfig("useShortLink", value) { Config.useShortLink = it }
+            "info" -> updateBoolConfig("enableDetailedInfo", value) { Config.enableDetailedInfo = it }
+            "download" -> updateBoolConfig("enableDownload", value) { Config.enableDownload = it }
+
+            "addadmin" -> modifyAdmin(value, add = true)
+            "removeadmin" -> modifyAdmin(value, add = false)
             "listadmins" -> {
                 if (Config.adminQQs.isEmpty()) {
                     sendMessage("当前没有管理员")
@@ -146,7 +71,86 @@ object BiliVideoParserCommand : SimpleCommand(
                     sendMessage("当前管理员列表：$admins")
                 }
             }
-            else -> sendMessage("❌ 未知配置项：$option，可用选项: enable, shortlink, Info, Download, addadmin, removeadmin, listadmins")
+
+            // ✅ 群组控制相关
+            "addwhite" -> modifyGroupList(value, whitelist = true, add = true)
+            "removewhite" -> modifyGroupList(value, whitelist = true, add = false)
+            "addblack" -> modifyGroupList(value, whitelist = false, add = true)
+            "removeblack" -> modifyGroupList(value, whitelist = false, add = false)
+            "listgroups" -> {
+                val white = Config.groupWhiteList.joinToString(", ")
+                val black = Config.groupBlackList.joinToString(", ")
+                sendMessage("📃 白名单群: $white\n🚫 黑名单群: $black")
+            }
+
+            else -> sendMessage("❌ 未知配置项：$option，请输入 /bvp 查看帮助")
         }
+    }
+
+    private suspend fun CommandSender.updateBoolConfig(name: String, value: String?, setter: (Boolean) -> Unit) {
+        if (value == null) {
+            sendMessage("❌ 请提供值，例如: /bvp $name true")
+            return
+        }
+        val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
+        if (boolValue == null) {
+            sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
+        } else {
+            setter(boolValue)
+            Config.forceSave()
+            sendMessage("✅ 配置已更新：$name = $boolValue")
+        }
+    }
+
+    private suspend fun CommandSender.modifyAdmin(value: String?, add: Boolean) {
+        val qq = value?.toLongOrNull()
+        if (qq == null || qq <= 0) {
+            sendMessage("❌ 无效的 QQ 号")
+            return
+        }
+        if (add) {
+            if (Config.isAdmin(qq)) {
+                sendMessage("❌ QQ $qq 已是管理员")
+            } else {
+                Config.adminQQs.add(qq)
+                Config.forceSave()
+                sendMessage("✅ 已添加管理员: $qq")
+            }
+        } else {
+            if (!Config.isAdmin(qq)) {
+                sendMessage("❌ QQ $qq 不在管理员列表")
+            } else if (Config.adminQQs.size <= 1) {
+                sendMessage("❌ 无法移除最后一个管理员")
+            } else {
+                Config.adminQQs.remove(qq)
+                Config.forceSave()
+                sendMessage("✅ 已移除管理员: $qq")
+            }
+        }
+    }
+
+    private suspend fun CommandSender.modifyGroupList(value: String?, whitelist: Boolean, add: Boolean) {
+        val groupId = value?.toLongOrNull()
+        if (groupId == null) {
+            sendMessage("❌ 无效群号")
+            return
+        }
+
+        val list = if (whitelist) Config.groupWhiteList else Config.groupBlackList
+        val other = if (whitelist) Config.groupBlackList else Config.groupWhiteList
+
+        if (add) {
+            list.add(groupId)
+            other.remove(groupId)
+            sendMessage("✅ 已将群 $groupId 添加至${if (whitelist) "白" else "黑"}名单")
+        } else {
+            if (list.remove(groupId)) {
+                sendMessage("✅ 已将群 $groupId 移出${if (whitelist) "白" else "黑"}名单")
+            } else {
+                sendMessage("⚠️ 群 $groupId 不在${if (whitelist) "白" else "黑"}名单中")
+            }
+        }
+
+        Config.forceSave()
     }
 }

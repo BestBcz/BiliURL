@@ -29,11 +29,10 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.1.3"
+        version = "1.1.4"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
-        // author 和 info 可以删除.
     }
 )
 
@@ -179,15 +178,35 @@ object BiliVideoParser : KotlinPlugin(
         }
         return defaultThumb
     }
+    // 检查视频文件是否稳定写入
+    private fun waitUntilFileReady(file: File, timeoutMillis: Long = 15000): Boolean {
+        val start = System.currentTimeMillis()
+        var lastLength = -1L
+        while (System.currentTimeMillis() - start < timeoutMillis) {
+            if (!file.exists()) {
+                Thread.sleep(500)
+                continue
+            }
+            val len = file.length()
+            if (len > 0 && len == lastLength) return true
+            lastLength = len
+            Thread.sleep(500)
+        }
+        return false
+    }
 
     /**
      * 发送视频消息
      */
     @OptIn(MiraiInternalApi::class)
-    suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null) {
+    suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null, isVipOnly: Boolean = false) {
         if (!videoFile.exists()) {
             logger.warning("视频文件不存在: ${videoFile.absolutePath}")
             group.sendMessage("❌ 视频文件不存在")
+            return
+        }
+        if (!waitUntilFileReady(videoFile)) {
+            group.sendMessage("⚠️ 视频准备超时，请稍后再试")
             return
         }
 
@@ -217,12 +236,16 @@ object BiliVideoParser : KotlinPlugin(
         val thumbnailResource = thumbnailToUse.toExternalResource("jpg")
 
         try {
+            // ✅ 修复关键：先发提示语，避免被“吞掉”
+            if (isVipOnly) {
+                group.sendMessage("⚠️ 此视频为充电专属或试看内容，仅提供试看片段。")
+            }
             val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
             group.sendMessage(shortVideo)
             logger.info("✅ 视频短消息发送成功: ${videoFile.name}")
         } catch (e: Exception) {
             logger.error("⚠️ 视频发送失败: ${e.message}", e)
-            group.sendMessage("⚠️ 视频发送失败: ${e.message}")
+            //group.sendMessage("⚠️ 视频发送失败: ${e.message}")
         } finally {
             videoResource.close()
             thumbnailResource.close()
@@ -258,6 +281,7 @@ object BiliVideoParser : KotlinPlugin(
                         val videoTitle = jsonData.meta.detail_1.desc ?: "哔哩哔哩"
                         val shortUrl = jsonData.meta.detail_1.qqdocurl
 
+
                         val bvId = getRealBilibiliUrl(shortUrl)
                         val videoLink = if (Config.useShortLink) {
                             shortUrl
@@ -271,12 +295,19 @@ object BiliVideoParser : KotlinPlugin(
 
                         var messageToSend = "【$sanitizedTitle - 哔哩哔哩】"
                         logger.info("Bilibili 小程序解析成功并准备发送，使用短链接: ${Config.useShortLink}, 解析到 BV 号: $bvId")
-                        logger.debug("原始desc字段值: ${jsonData.meta.detail_1.desc}")
-                        logger.debug("处理后标题: $sanitizedTitle")
+
+                        val details = getVideoDetails(bvId)
+                        val isVip = details?.let {
+                            val payApi = URL("https://api.bilibili.com/x/web-interface/view?bvid=$bvId").readText()
+                            payApi.contains("\"pay_mode\":1")
+                        } ?: false
 
                         var thumbnailUrl: String? = null
+
                         if (Config.enableDetailedInfo && bvId != "未知BV号") {
-                            val details = getVideoDetails(bvId)
+                            if (isVip)
+                                group.sendMessage("⚠️ 此视频为充电专属或试看，仅提供试看内容")
+
                             if (details != null) {
                                 val detailMsg = buildString {
                                     appendLine("【${details.title}】")

@@ -7,7 +7,6 @@ import net.mamoe.mirai.console.data.ValueDescription
 import net.mamoe.mirai.console.data.value
 import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 
-
 object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
 
     @ValueDescription("配置版本号，用于自动检测和更新旧版配置，请勿自行修改")
@@ -28,25 +27,37 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("管理员 QQ 号列表，只有这些用户可以使用指令")
     var adminQQs: MutableList<Long> by value(mutableListOf(123456789L, 987654321L))
 
+    // 群组黑白名单控制
+    @ValueDescription("白名单群号列表（优先生效）")
+    var groupWhiteList: MutableSet<Long> by value(mutableSetOf())
+
+    @ValueDescription("黑名单群号列表")
+    var groupBlackList: MutableSet<Long> by value(mutableSetOf())
+
+    // 群组判断逻辑
+    fun isGroupAllowed(groupId: Long): Boolean {
+        return when {
+            groupWhiteList.isNotEmpty() -> groupId in groupWhiteList
+            groupBlackList.isNotEmpty() -> groupId !in groupBlackList
+            else -> true
+        }
+    }
+
     fun isAdmin(qq: Long): Boolean {
         return qq in adminQQs
     }
 
-    // 修改此常量以触发自动更新（当旧版配置的 configVersion 小于此值时，会立即更新并保存配置）
-    private const val CURRENT_CONFIG_VERSION = 3
+    private const val CURRENT_CONFIG_VERSION = 4 // [MODIFIED]
 
     @OptIn(ConsoleExperimentalApi::class)
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {
         super.onInit(owner, storage)
         if (configVersion < CURRENT_CONFIG_VERSION) {
-            // 这里可以加入旧版配置的迁移逻辑
             configVersion = CURRENT_CONFIG_VERSION
-            // 强制保存配置文件（默认 AutoSavePluginConfig 只在退出时保存）
             forceSave()
         }
     }
 
-    // 利用反射调用父类中私有的 save() 方法，达到立即保存的效果
     fun forceSave() {
         try {
             val method = AutoSavePluginConfig::class.java.getDeclaredMethod("save")
