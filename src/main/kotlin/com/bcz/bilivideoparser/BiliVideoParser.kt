@@ -1,28 +1,28 @@
 package com.bcz.bilivideoparser
 
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import net.mamoe.mirai.console.command.CommandManager
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import net.mamoe.mirai.contact.Group
 import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.globalEventChannel
 import net.mamoe.mirai.message.data.content
-import net.mamoe.mirai.utils.MiraiInternalApi
-import java.io.*
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.TimeUnit
-import kotlin.OptIn
-import okio.IOException
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
-import javax.imageio.ImageIO
+import okio.IOException
 import java.awt.Color
 import java.awt.image.BufferedImage
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.file.Paths
-import net.mamoe.mirai.console.command.CommandManager
-
-
+import java.util.concurrent.TimeUnit
+import javax.imageio.ImageIO
 
 
 object BiliVideoParser : KotlinPlugin(
@@ -44,13 +44,13 @@ object BiliVideoParser : KotlinPlugin(
     // 定义下载目录
     private val DOWNLOAD_DIR = Paths.get("bilidownload").toFile().apply {
     if (!exists()) mkdirs() // 创建目录如果不存在
-    logger.info("下载目录已设置: ${absolutePath}")
+    logger.info("下载目录已设置: $absolutePath")
 }
 
 
 
     // BV号重定向解析真实链接
-    fun getRealBilibiliUrl(shortUrl: String): String {
+    private fun getRealBilibiliUrl(shortUrl: String): String {
         return try {
             val connection = URL(shortUrl).openConnection() as HttpURLConnection
             connection.instanceFollowRedirects = false
@@ -85,7 +85,7 @@ object BiliVideoParser : KotlinPlugin(
 
     data class BiliApiResponse(val code: Int, val data: VideoDetails?)
 
-    fun getVideoDetails(bvId: String): VideoDetails? {
+    private fun getVideoDetails(bvId: String): VideoDetails? {
         val apiUrl = "https://api.bilibili.com/x/web-interface/view?bvid=$bvId"
         return try {
             val connection = URL(apiUrl).openConnection() as HttpURLConnection
@@ -103,7 +103,7 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    fun downloadBiliVideo(bvId: String): File? {
+    private fun downloadBiliVideo(bvId: String): File? {
         val outputFile = File(DOWNLOAD_DIR, "downloaded_video_$bvId.mp4")
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
@@ -127,7 +127,7 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    fun downloadThumbnail(url: String): File? {
+    private fun downloadThumbnail(url: String): File? {
         logger.info("尝试下载封面图: $url")
         val outputFile = File(DOWNLOAD_DIR, "thumbnail_${url.hashCode()}.jpg")
         try {
@@ -140,13 +140,13 @@ object BiliVideoParser : KotlinPlugin(
             input.copyTo(output)
             output.close()
             input.close()
-            if (outputFile.exists() && outputFile.length() > 0) {
+            return if (outputFile.exists() && outputFile.length() > 0) {
                 logger.info("封面图下载成功: ${outputFile.absolutePath}")
-                return outputFile
+                outputFile
             } else {
                 logger.warning("封面图下载失败（文件未生成或为空）")
                 outputFile.delete()
-                return null
+                null
             }
         } catch (e: Exception) {
             logger.error("封面图下载失败: ${e.message}", e)
@@ -158,7 +158,7 @@ object BiliVideoParser : KotlinPlugin(
     /**
      * 生成默认缩略图（黑色 1656×931）
      */
-    fun generateDefaultThumbnail(): File {
+    private fun generateDefaultThumbnail(): File {
         val defaultThumb = File(DOWNLOAD_DIR, "default_thumbnail.jpg")
         if (!defaultThumb.exists()) {
             try {
@@ -198,8 +198,7 @@ object BiliVideoParser : KotlinPlugin(
     /**
      * 发送视频消息
      */
-    @OptIn(MiraiInternalApi::class)
-    suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null, isVipOnly: Boolean = false) {
+    private suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null, isVipOnly: Boolean = false) {
         if (!videoFile.exists()) {
             logger.warning("视频文件不存在: ${videoFile.absolutePath}")
             group.sendMessage("❌ 视频文件不存在")
@@ -223,7 +222,9 @@ object BiliVideoParser : KotlinPlugin(
                 } catch (e: Exception) {
                     logger.error("⚠️ 封面图发送失败: ${e.message}", e)
                 } finally {
-                    thumbnailResource.close()
+                    withContext(Dispatchers.IO) {
+                        thumbnailResource.close()
+                    }
                 }
             } else {
                 logger.warning("无法下载封面图: $thumbnailUrl")
@@ -247,8 +248,12 @@ object BiliVideoParser : KotlinPlugin(
             logger.error("⚠️ 视频发送失败: ${e.message}", e)
             //group.sendMessage("⚠️ 视频发送失败: ${e.message}")
         } finally {
-            videoResource.close()
-            thumbnailResource.close()
+            withContext(Dispatchers.IO) {
+                videoResource.close()
+            }
+            withContext(Dispatchers.IO) {
+                thumbnailResource.close()
+            }
             // 删除相关文件
             videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
             thumbnailToUse.delete().let { logger.info("删除缩略图文件: ${thumbnailToUse.absolutePath}, 结果: $it") }
