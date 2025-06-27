@@ -50,6 +50,7 @@ object BiliVideoParserCommand : SimpleCommand(
                 removewhite # 移除白名单
                 removeblack # 移除黑名单
                 listgroups # 查看群组列表
+                sendlink # 是否发送解析后的视频链接
                 """.trimIndent()
             )
             return
@@ -60,6 +61,7 @@ object BiliVideoParserCommand : SimpleCommand(
             "shortlink" -> updateBoolConfig("useShortLink", value) { Config.useShortLink = it }
             "info" -> updateBoolConfig("enableDetailedInfo", value) { Config.enableDetailedInfo = it }
             "download" -> updateBoolConfig("enableDownload", value) { Config.enableDownload = it }
+            "sendlink" -> updateBoolConfig("enableSendLink", value) { Config.enableSendLink = it }
 
             "addadmin" -> modifyAdmin(value, add = true)
             "removeadmin" -> modifyAdmin(value, add = false)

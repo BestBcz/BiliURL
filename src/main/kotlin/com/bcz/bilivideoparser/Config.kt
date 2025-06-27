@@ -34,6 +34,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("黑名单群号列表")
     var groupBlackList: MutableSet<Long> by value(mutableSetOf())
 
+    @ValueDescription("是否发送解析后的视频链接")
+    var enableSendLink: Boolean by value(true)
+
     // 群组判断逻辑
     fun isGroupAllowed(groupId: Long): Boolean {
         return when {

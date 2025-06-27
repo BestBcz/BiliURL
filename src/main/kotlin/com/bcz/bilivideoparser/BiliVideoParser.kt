@@ -29,7 +29,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.1.4"
+        version = "1.1.5"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
@@ -47,7 +47,19 @@ object BiliVideoParser : KotlinPlugin(
     logger.info("下载目录已设置: $absolutePath")
 }
 
-
+    //删除旧文件
+    private fun cleanupOldFiles() {
+        val files = DOWNLOAD_DIR.listFiles()
+        files?.forEach {
+            if (it.exists() && it.isFile) {
+                if (it.delete()) {
+                    logger.info("清理旧文件: ${it.absolutePath}")
+                } else {
+                    logger.warning("无法删除文件: ${it.absolutePath}")
+                }
+            }
+        }
+    }
 
     // BV号重定向解析真实链接
     private fun getRealBilibiliUrl(shortUrl: String): String {
@@ -198,7 +210,7 @@ object BiliVideoParser : KotlinPlugin(
     /**
      * 发送视频消息
      */
-    private suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null, isVipOnly: Boolean = false) {
+    private suspend fun sendShortVideoMessage( group: Group, videoFile: File, thumbnailUrl: String? = null ) {
         if (!videoFile.exists()) {
             logger.warning("视频文件不存在: ${videoFile.absolutePath}")
             group.sendMessage("❌ 视频文件不存在")
@@ -237,16 +249,22 @@ object BiliVideoParser : KotlinPlugin(
         val thumbnailResource = thumbnailToUse.toExternalResource("jpg")
 
         try {
-            // ✅ 修复关键：先发提示语，避免被“吞掉”
-            if (isVipOnly) {
-                group.sendMessage("⚠️ 此视频为充电专属或试看内容，仅提供试看片段。")
-            }
+
             val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
             group.sendMessage(shortVideo)
+
             logger.info("✅ 视频短消息发送成功: ${videoFile.name}")
         } catch (e: Exception) {
+
             logger.error("⚠️ 视频发送失败: ${e.message}", e)
             //group.sendMessage("⚠️ 视频发送失败: ${e.message}")
+
+            // 发送失败后删除视频文件
+            videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
+            thumbnailToUse.delete().let { logger.info("删除缩略图文件: ${thumbnailToUse.absolutePath}, 结果: $it") }
+            thumbnailFile?.delete()?.let { logger.info("删除下载的封面图: ${thumbnailFile.absolutePath}, 结果: $it") }
+            group.sendMessage("⚠️ 视频发送失败，请稍后重试。")
+
         } finally {
             withContext(Dispatchers.IO) {
                 videoResource.close()
@@ -261,11 +279,78 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
+     //小程序消息处理
+    suspend fun GroupMessageEvent.handleMiniAppMessage(event: GroupMessageEvent) {
+        val jsonData = Gson().fromJson(message.content, MiniAppJsonData::class.java)
+        if (jsonData.app == "com.tencent.miniapp_01" &&
+            jsonData.meta.detail_1.appid == "1109937557") {
+
+            val shortUrl = jsonData.meta.detail_1.qqdocurl
+            val title = jsonData.meta.detail_1.desc ?: "哔哩哔哩"
+            val bvId = getRealBilibiliUrl(shortUrl)
+            val videoLink = if (Config.useShortLink) shortUrl else "https://www.bilibili.com/video/$bvId"
+
+            handleParsedBVId(group, bvId, videoLink, title)
+        }
+    }
+
+    //分享链接处理
+    suspend fun GroupMessageEvent.handleLinkMessage(event: GroupMessageEvent, shortUrl: String) {
+        val bvId = getRealBilibiliUrl(shortUrl)
+        val videoLink = if (Config.useShortLink) shortUrl else "https://www.bilibili.com/video/$bvId"
+        val title = "B站分享视频"
+
+        handleParsedBVId(group, bvId, videoLink, title)
+    }
+
+
+    //公共处理函数
+    suspend fun handleParsedBVId(group: Group, bvId: String, videoLink: String, title: String) {
+        val details = getVideoDetails(bvId)
+
+        var message = ""
+
+        if (details != null && Config.enableDetailedInfo) {
+            message += buildString {
+                appendLine("【${details.title}】")
+                appendLine("UP: ${details.owner.name}")
+                appendLine("播放: ${details.stat.view}   弹幕: ${details.stat.danmaku}")
+                appendLine("评论: ${details.stat.reply}   收藏: ${details.stat.favorite}")
+                appendLine("投币: ${details.stat.coin}   分享: ${details.stat.share}")
+                appendLine("点赞: ${details.stat.like}")
+                appendLine("简介: ${details.desc}")
+            }
+        }
+
+        if (Config.enableSendLink) {
+            message += "\n链接: $videoLink"
+        }
+
+        if (message.isNotBlank()) {
+            group.sendMessage(message)
+        }
+
+        if (Config.enableDownload && bvId != "未知BV号") {
+            val videoFile = downloadBiliVideo(bvId)
+            if (videoFile != null) {
+                sendShortVideoMessage(group, videoFile, details?.pic)
+            } else {
+                logger.info("⚠️ 视频下载失败，请稍后重试")
+            }
+        }
+    }
+
+
     override fun onEnable() {
         logger.info("Bilibili 视频解析插件已启用 - 开始加载")
+
         Config.reload()
+
         logger.info("配置加载完成，enableParsing = ${Config.enableParsing}, enableDownload = ${Config.enableDownload}, enableDetailedInfo = ${Config.enableDetailedInfo}")
+
         CommandManager.registerCommand(BiliVideoParserCommand) // 注册控制台指令
+
+        cleanupOldFiles()
 
         globalEventChannel().subscribeAlways<GroupMessageEvent> {   //收到群消息
             //logger.info("收到群消息，原始内容: ${this.message.serializeToMiraiCode()}")
@@ -275,90 +360,20 @@ object BiliVideoParser : KotlinPlugin(
                 return@subscribeAlways
             }
 
-            val miraiCode = this.message.serializeToMiraiCode()
-            //logger.info("检查消息是否为小程序: $miraiCode")
+            val rawText = message.content
+            val miraiCode = message.serializeToMiraiCode()
+
             if (miraiCode.startsWith("[mirai:app")) {
-                val gotRawData = this.message.content
-                logger.info("检测到小程序消息，尝试解析: $gotRawData")
-                try {
-                    val jsonData = Gson().fromJson(gotRawData, MiniAppJsonData::class.java)
-                    if (jsonData.app == "com.tencent.miniapp_01" && jsonData.meta.detail_1.appid == "1109937557") {
-                        val videoTitle = jsonData.meta.detail_1.desc ?: "哔哩哔哩"
-                        val shortUrl = jsonData.meta.detail_1.qqdocurl
-
-
-                        val bvId = getRealBilibiliUrl(shortUrl)
-                        val videoLink = if (Config.useShortLink) {
-                            shortUrl
-                        } else {
-                            "https://www.bilibili.com/video/$bvId/"
-                        }
-                        val sanitizedTitle = videoTitle
-                            .replace("[", "【")
-                            .replace("]", "】")
-                            .trim()
-
-                        var messageToSend = "【$sanitizedTitle - 哔哩哔哩】"
-                        logger.info("Bilibili 小程序解析成功并准备发送，使用短链接: ${Config.useShortLink}, 解析到 BV 号: $bvId")
-
-                        val details = getVideoDetails(bvId)
-                        val isVip = details?.let {
-                            val payApi = URL("https://api.bilibili.com/x/web-interface/view?bvid=$bvId").readText()
-                            payApi.contains("\"pay_mode\":1")
-                        } ?: false
-
-                        var thumbnailUrl: String? = null
-
-                        if (Config.enableDetailedInfo && bvId != "未知BV号") {
-                            if (isVip)
-                                group.sendMessage("⚠️ 此视频为充电专属或试看，仅提供试看内容")
-
-                            if (details != null) {
-                                val detailMsg = buildString {
-                                    appendLine("【${details.title}】")
-                                    appendLine("UP: ${details.owner.name}")
-                                    appendLine("播放: ${details.stat.view}   弹幕: ${details.stat.danmaku}")
-                                    appendLine("评论: ${details.stat.reply}   收藏: ${details.stat.favorite}")
-                                    appendLine("投币: ${details.stat.coin}   分享: ${details.stat.share}")
-                                    appendLine("点赞: ${details.stat.like}")
-                                    appendLine("简介: ${details.desc}")
-                                    appendLine("链接: $videoLink")
-                                }
-                                messageToSend += "\n" + detailMsg
-                                thumbnailUrl = details.pic
-                            } else {
-                                logger.warning("无法获取视频详细信息，BV号: $bvId")
-                                messageToSend += "\n链接: $videoLink"
-                            }
-                        } else {
-                            messageToSend += "\n链接: $videoLink"
-                        }
-
-                        this.group.sendMessage(messageToSend)
-                        logger.info("消息发送完成")
-
-                        //logger.info("检查下载功能是否启用: enableDownload = ${Config.enableDownload}")
-                        if (Config.enableDownload) {
-                            logger.info("开始下载视频: $bvId")
-                            val videoFile = downloadBiliVideo(bvId)
-                            if (videoFile != null) {
-                                logger.info("视频文件下载成功: ${videoFile.absolutePath}")
-                                sendShortVideoMessage(this@subscribeAlways.group, videoFile, thumbnailUrl)
-                            } else {
-                                logger.warning("视频下载失败，返回 null")
-                                group.sendMessage("⚠️ 视频下载失败，请检查日志")
-                            }
-                        } else {
-                            logger.info("下载功能未启用，跳过下载")
-                        }
-                    } else {
-                        //logger.info("小程序不是 Bilibili 的，跳过处理")
-                    }
-                } catch (e: Exception) {
-                    logger.error("解析 Bilibili 小程序出错: ${e.message}", e)
-                }
+                // 小程序消息处理逻辑
+                handleMiniAppMessage(this)
             } else {
-                //logger.info("消息不是小程序，跳过处理")
+                // 链接分享逻辑
+                val regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+""")
+                val match = regex.find(rawText)
+                if (match != null) {
+                    val shortUrl = match.value
+                    handleLinkMessage(this, shortUrl)
+                }
             }
         }
 
