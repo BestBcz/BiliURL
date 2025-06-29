@@ -363,15 +363,23 @@ object BiliVideoParser : KotlinPlugin(
             val miraiCode = message.serializeToMiraiCode()
 
             if (miraiCode.startsWith("[mirai:app")) {
-                // 小程序消息处理逻辑
+                // 处理小程序
                 handleMiniAppMessage(this)
             } else {
-                // 链接分享逻辑
-                val regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+""")
-                val match = regex.find(rawText)
-                if (match != null) {
-                    val shortUrl = match.value
+                // 检查短链接和长链接
+                val b23Regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+""")
+                val biliLongRegex = Regex("""https?://(www\.)?bilibili\.com/video/(BV[0-9A-Za-z]+)""")
+
+                val b23Match = b23Regex.find(rawText)
+                val longMatch = biliLongRegex.find(rawText)
+
+                if (b23Match != null) {
+                    val shortUrl = b23Match.value
                     handleLinkMessage(this, shortUrl)
+                } else if (longMatch != null) {
+                    val bvId = longMatch.groupValues[2]
+                    val longUrl = longMatch.value
+                    handleParsedBVId(group, bvId, longUrl, "B站分享视频")
                 }
             }
         }
