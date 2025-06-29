@@ -141,27 +141,41 @@ object BiliVideoParser : KotlinPlugin(
 
     private fun downloadThumbnail(url: String): File? {
         logger.info("尝试下载封面图: $url")
-        val outputFile = File(DOWNLOAD_DIR, "thumbnail_${url.hashCode()}.jpg")
+        val rawImageFile = File(DOWNLOAD_DIR, "raw_thumbnail_${url.hashCode()}.img")
+        val jpgFile = File(DOWNLOAD_DIR, "thumbnail_${url.hashCode()}.jpg")
+
         try {
+            // 下载原始图片
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
             connection.connect()
-            val input = connection.inputStream
-            val output = FileOutputStream(outputFile)
-            input.copyTo(output)
-            output.close()
-            input.close()
-            return if (outputFile.exists() && outputFile.length() > 0) {
-                logger.info("封面图下载成功: ${outputFile.absolutePath}")
-                outputFile
-            } else {
-                logger.warning("封面图下载失败（文件未生成或为空）")
-                outputFile.delete()
-                null
+
+            connection.inputStream.use { input ->
+                rawImageFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
             }
+
+            // 解码成 BufferedImage
+            val image = ImageIO.read(rawImageFile)
+            if (image == null) {
+                logger.error("无法解码封面图（非标准图像格式）")
+                rawImageFile.delete()
+                return null
+            }
+
+            // 转换为 JPG 并保存
+            ImageIO.write(image, "jpg", jpgFile)
+            //logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}")
+
+            // 删除原始图片文件
+            rawImageFile.delete()
+            return jpgFile
         } catch (e: Exception) {
-            logger.error("封面图下载失败: ${e.message}", e)
+            logger.error("封面图处理失败: ${e.message}", e)
+            rawImageFile.delete()
+            jpgFile.delete()
             return null
         }
     }
