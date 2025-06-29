@@ -16,20 +16,22 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+
 
 
 object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.1.5"
+        version = "1.1.6"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
@@ -111,6 +113,25 @@ object BiliVideoParser : KotlinPlugin(
             if (apiResponse.code == 0) apiResponse.data else null
         } catch (e: Exception) {
             logger.error("获取视频详情失败: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun waitForUserReply(group: Group, userId: Long, timeoutMillis: Long = 30000): String? {
+        return try {
+            var result: String? = null
+            globalEventChannel().subscribeOnce<GroupMessageEvent> {
+                if (it.group.id == group.id && it.sender.id == userId) {
+                    result = it.message.contentToString()
+                }
+            }
+            withTimeout(timeoutMillis) {
+                while (result == null) {
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+            result
+        } catch (e: TimeoutCancellationException) {
             null
         }
     }
@@ -293,33 +314,43 @@ object BiliVideoParser : KotlinPlugin(
     }
 
      //小程序消息处理
-    suspend fun GroupMessageEvent.handleMiniAppMessage(event: GroupMessageEvent) {
+    private suspend fun GroupMessageEvent.handleMiniAppMessage() {
         val jsonData = Gson().fromJson(message.content, MiniAppJsonData::class.java)
         if (jsonData.app == "com.tencent.miniapp_01" &&
             jsonData.meta.detail_1.appid == "1109937557") {
 
             val shortUrl = jsonData.meta.detail_1.qqdocurl
-            val title = jsonData.meta.detail_1.desc ?: "哔哩哔哩"
+            jsonData.meta.detail_1.desc ?: "哔哩哔哩"
             val bvId = getRealBilibiliUrl(shortUrl)
             val videoLink = if (Config.useShortLink) shortUrl else "https://www.bilibili.com/video/$bvId"
 
-            handleParsedBVId(group, bvId, videoLink, title)
+            handleParsedBVId(group, bvId, videoLink, sender.id)
         }
     }
 
     //分享链接处理
-    suspend fun GroupMessageEvent.handleLinkMessage(event: GroupMessageEvent, shortUrl: String) {
+    private suspend fun GroupMessageEvent.handleLinkMessage(shortUrl: String) {
         val bvId = getRealBilibiliUrl(shortUrl)
         val videoLink = if (Config.useShortLink) shortUrl else "https://www.bilibili.com/video/$bvId"
-        val title = "B站分享视频"
 
-        handleParsedBVId(group, bvId, videoLink, title)
+
+        handleParsedBVId(group, bvId, videoLink, sender.id)
+    }
+
+    private suspend fun proceedToDownload(group: Group, bvId: String, details: VideoDetails?) {
+        val videoFile = downloadBiliVideo(bvId)
+        if (videoFile != null) {
+            sendShortVideoMessage(group, videoFile, details?.pic)
+        } else {
+            group.sendMessage("⚠️ 视频下载失败，请稍后重试")
+        }
     }
 
 
     //公共处理函数
-    suspend fun handleParsedBVId(group: Group, bvId: String, videoLink: String, title: String) {
+    private suspend fun handleParsedBVId(group: Group, bvId: String, videoLink: String, senderId: Long) {
         val details = getVideoDetails(bvId)
+
 
         var message = ""
 
@@ -343,12 +374,23 @@ object BiliVideoParser : KotlinPlugin(
             group.sendMessage(message)
         }
 
-        if (Config.enableDownload && bvId != "未知BV号") {
-            val videoFile = downloadBiliVideo(bvId)
-            if (videoFile != null) {
-                sendShortVideoMessage(group, videoFile, details?.pic)
-            } else {
-                logger.info("⚠️ 视频下载失败，请稍后重试")
+        if (bvId != "未知BV号") {
+            if (Config.askBeforeDownload) {
+                group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘需要’（30秒内有效）")
+                try {
+                    val reply = waitForUserReply(group, senderId)
+
+                    val keywords = listOf("下载", "需要", "要")
+                    if (keywords.any { reply?.contains(it) == true }) {
+                        proceedToDownload(group, bvId, details)
+                    } else {
+                        group.sendMessage("✅ 已忽略视频下载请求")
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    group.sendMessage("⌛ 下载请求超时，已跳过下载")
+                }
+            } else if (Config.enableDownload) {
+                proceedToDownload(group, bvId, details)
             }
         }
     }
@@ -378,7 +420,7 @@ object BiliVideoParser : KotlinPlugin(
 
             if (miraiCode.startsWith("[mirai:app")) {
                 // 处理小程序
-                handleMiniAppMessage(this)
+                handleMiniAppMessage()
             } else {
                 // 检查短链接和长链接
                 val b23Regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+""")
@@ -389,11 +431,11 @@ object BiliVideoParser : KotlinPlugin(
 
                 if (b23Match != null) {
                     val shortUrl = b23Match.value
-                    handleLinkMessage(this, shortUrl)
+                    handleLinkMessage(shortUrl)
                 } else if (longMatch != null) {
                     val bvId = longMatch.groupValues[2]
                     val longUrl = longMatch.value
-                    handleParsedBVId(group, bvId, longUrl, "B站分享视频")
+                    handleParsedBVId(group, bvId, longUrl, sender.id)
                 }
             }
         }
@@ -402,17 +444,10 @@ object BiliVideoParser : KotlinPlugin(
     }
 }
 
+
+
 // 数据类映射小程序 JSON 结构
 data class MiniAppJsonData(val app: String, val meta: Meta) {
     data class Meta(val detail_1: Detail)
     data class Detail(val desc: String?, val qqdocurl: String, val appid: String)
 }
-
-data class MetaData(val detail_1: DetailData)
-
-data class DetailData(
-    val appid: String,
-    val title: String,
-    val qqdocurl: String,
-    val desc: String
-)

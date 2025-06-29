@@ -37,6 +37,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("是否发送解析后的视频链接")
     var enableSendLink: Boolean by value(true)
 
+    @ValueDescription("是否在下载前询问用户")
+    var askBeforeDownload: Boolean by value(false)  // 默认 false，直接按 enableDownload 执行
+
     // 群组判断逻辑
     fun isGroupAllowed(groupId: Long): Boolean {
         return when {
