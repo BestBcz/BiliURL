@@ -1,8 +1,7 @@
 package com.bcz.bilivideoparser
 
 import com.google.gson.Gson
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import net.mamoe.mirai.console.command.CommandManager
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
@@ -22,10 +21,6 @@ import java.net.URL
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.CompletableDeferred
-
 
 
 object BiliVideoParser : KotlinPlugin(
@@ -63,6 +58,42 @@ object BiliVideoParser : KotlinPlugin(
             }
         }
     }
+
+
+                   //定时清理
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startAutoCleanupJob() {
+        GlobalScope.launch {
+            while (true) {
+                try {
+                    val now = System.currentTimeMillis()
+                    val cutoff = now - 24 * 60 * 60 * 1000 // 24小时前
+
+                    val files = DOWNLOAD_DIR.listFiles()
+                    var deletedCount = 0
+
+                    files?.forEach { file ->
+                        if (file.isFile && file.lastModified() < cutoff) {
+                            if (file.delete()) {
+                                //logger.info("🧹 定时清理旧文件: ${file.name}")
+                                deletedCount++
+                            } else {
+                                logger.warning("⚠️ 无法删除旧文件: ${file.name}")
+                            }
+                        }
+                    }
+
+                    //logger.info("✅ 定时清理完成，共删除 $deletedCount 个旧文件")
+                } catch (e: Exception) {
+                    logger.error("❌ 定时清理任务异常: ${e.message}", e)
+                }
+
+                delay(24 * 60 * 60 * 1000) // 每24小时执行一次
+            }
+        }
+    }
+
+
 
     // BV号重定向解析真实链接
     private fun getRealBilibiliUrl(shortUrl: String): String {
@@ -404,6 +435,7 @@ object BiliVideoParser : KotlinPlugin(
         CommandManager.registerCommand(BiliVideoParserCommand) // 注册控制台指令
 
         cleanupOldFiles()
+        startAutoCleanupJob()
 
         globalEventChannel().subscribeAlways<GroupMessageEvent> {   //收到群消息
             //logger.info("收到群消息，原始内容: ${this.message.serializeToMiraiCode()}")
