@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CompletableDeferred
 
 
 
@@ -117,24 +118,6 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    private suspend fun waitForUserReply(group: Group, userId: Long, timeoutMillis: Long = 30000): String? {
-        return try {
-            var result: String? = null
-            globalEventChannel().subscribeOnce<GroupMessageEvent> {
-                if (it.group.id == group.id && it.sender.id == userId) {
-                    result = it.message.contentToString()
-                }
-            }
-            withTimeout(timeoutMillis) {
-                while (result == null) {
-                    kotlinx.coroutines.delay(100)
-                }
-            }
-            result
-        } catch (e: TimeoutCancellationException) {
-            null
-        }
-    }
 
     private fun downloadBiliVideo(bvId: String): File? {
         val outputFile = File(DOWNLOAD_DIR, "downloaded_video_$bvId.mp4")
@@ -188,7 +171,7 @@ object BiliVideoParser : KotlinPlugin(
 
             // 转换为 JPG 并保存
             ImageIO.write(image, "jpg", jpgFile)
-            //logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}")
+            logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}")
 
             // 删除原始图片文件
             rawImageFile.delete()
@@ -338,7 +321,26 @@ object BiliVideoParser : KotlinPlugin(
         if (videoFile != null) {
             sendShortVideoMessage(group, videoFile, details?.pic)
         } else {
-            group.sendMessage("⚠️ 视频下载失败，请稍后重试")
+            logger.error("⚠️ 视频下载失败，请稍后重试")
+        }
+    }
+
+    private suspend fun waitForUserReply(group: Group, userId: Long, timeoutMillis: Long = 30000): String? {
+        return try {
+            val deferred = CompletableDeferred<String?>()
+            val subscription = globalEventChannel().subscribeAlways<GroupMessageEvent> {
+                if (it.group.id == group.id && it.sender.id == userId) {
+                    deferred.complete(it.message.contentToString())
+                }
+            }
+
+            withTimeout(timeoutMillis) {
+                deferred.await()
+            }.also {
+                subscription.complete() // 关闭监听器
+            }
+        } catch (e: TimeoutCancellationException) {
+            null
         }
     }
 
@@ -372,11 +374,11 @@ object BiliVideoParser : KotlinPlugin(
 
         if (bvId != "未知BV号") {
             if (Config.askBeforeDownload) {
-                group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘需要’（30秒内有效）")
+                group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘是’（30秒内有效）")
                 try {
                     val reply = waitForUserReply(group, senderId)
 
-                    val keywords = listOf("下载", "需要", "要")
+                    val keywords = listOf("下载", "是", "要")
                     if (keywords.any { reply?.contains(it) == true }) {
                         proceedToDownload(group, bvId, details)
                     } else {
