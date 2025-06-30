@@ -1,13 +1,11 @@
 package com.bcz.bilivideoparser
 
 import net.mamoe.mirai.console.command.*
-import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 import net.mamoe.mirai.console.permission.Permission
 import net.mamoe.mirai.console.permission.PermissionService.Companion.hasPermission
 import net.mamoe.mirai.contact.User
 import net.mamoe.mirai.console.command.CommandSender
 
-@OptIn(ConsoleExperimentalApi::class)
 object BiliVideoParserCommand : SimpleCommand(
     BiliVideoParser,
     primaryName = "bilivideoparser",
@@ -97,13 +95,9 @@ object BiliVideoParserCommand : SimpleCommand(
             return
         }
         val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
-        if (boolValue == null) {
-            sendMessage("❌ 无效的布尔值：$value，应为 true/false 或 1/0")
-        } else {
-            setter(boolValue)
-            Config.forceSave()
-            sendMessage("✅ 配置已更新：$name = $boolValue")
-        }
+        setter(boolValue)
+        Config.forceSave()
+        sendMessage("✅ 配置已更新：$name = $boolValue")
     }
 
     private suspend fun CommandSender.modifyAdmin(value: String?, add: Boolean) {
