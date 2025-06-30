@@ -294,10 +294,6 @@ object BiliVideoParser : KotlinPlugin(
             logger.error("⚠️ 视频发送失败: ${e.message}", e)
             //group.sendMessage("⚠️ 视频发送失败: ${e.message}")
 
-            // 发送失败后删除视频文件
-            videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
-            thumbnailToUse.delete().let { logger.info("删除缩略图文件: ${thumbnailToUse.absolutePath}, 结果: $it") }
-            thumbnailFile?.delete()?.let { logger.info("删除下载的封面图: ${thumbnailFile.absolutePath}, 结果: $it") }
 
         } finally {
             withContext(Dispatchers.IO) {
