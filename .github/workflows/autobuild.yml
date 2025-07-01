@@ -122,7 +122,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
-          name: "${{ env.VERSION }} Autobuild"
+          name: "${{ env.TAG }}"
           body_path: release_notes.md
           files: build/libs/*.jar
           prerelease: true
