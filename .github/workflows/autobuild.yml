@@ -1,0 +1,120 @@
+name: Auto Build
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 04 * * *"  # 每天北京时间 12:00
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  check_and_build:
+    name: Check + Build + Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set version from Gradle file
+        id: version
+        run: |
+          VERSION=$(grep 'version =' build.gradle.kts | head -n1 | sed -E 's/.*"(.+)"$/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if build needed
+        id: check
+        run: |
+          git fetch origin main --depth=2
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE 'build.gradle.kts|src/|BiliVideoParser.kt'; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+
+      - name: Stop if no changes
+        if: steps.check.outputs.should_build == 'false'
+        run: echo "No meaningful changes, skipping build."
+
+      - name: Build Project (Gradle)
+        if: steps.check.outputs.should_build == 'true'
+        run: ./gradlew build
+
+      - name: Generate Release Notes from Commits
+        id: changelog
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          echo "## Changelog" > release_notes.md
+          echo "" >> release_notes.md
+
+          # 获取最近10次提交（你可以修改 HEAD~10）
+          COMMITS=$(git log --pretty=format:"%s (%an)" HEAD~10..HEAD | grep -v 'dependabot')
+
+          # 初始化分类变量
+          NEW=""
+          FIXED=""
+          REFACTOR=""
+          DOCS=""
+          IMPROVED=""
+          OTHER=""
+
+          # 分类处理
+          while IFS= read -r line; do
+            if [[ "$line" == feat:* ]]; then
+              NEW="${NEW}- ${line#feat: }\n"
+            elif [[ "$line" == fix:* ]]; then
+              FIXED="${FIXED}- ${line#fix: }\n"
+            elif [[ "$line" == refactor:* ]]; then
+              REFACTOR="${REFACTOR}- ${line#refactor: }\n"
+            elif [[ "$line" == docs:* ]]; then
+              DOCS="${DOCS}- ${line#docs: }\n"
+            elif [[ "$line" == style:* || "$line" == perf:* ]]; then
+              IMPROVED="${IMPROVED}- ${line#*: }\n"
+            else
+              OTHER="${OTHER}- ${line}\n"
+            fi
+          done <<< "$COMMITS"
+
+          # 输出到文件（按顺序）
+          [[ -n "$NEW" ]] && echo -e "### New\n$NEW" >> release_notes.md
+          [[ -n "$FIXED" ]] && echo -e "### Fixed\n$FIXED" >> release_notes.md
+          [[ -n "$REFACTOR" ]] && echo -e "### Refactor\n$REFACTOR" >> release_notes.md
+          [[ -n "$DOCS" ]] && echo -e "### Documentation\n$DOCS" >> release_notes.md
+          [[ -n "$IMPROVED" ]] && echo -e "### Improved\n$IMPROVED" >> release_notes.md
+          [[ -n "$OTHER" ]] && echo -e "### Other Changes\n$OTHER" >> release_notes.md
+
+          cat release_notes.md
+
+      - name: Create Pre-release
+        if: steps.check.outputs.should_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: autobuild-${{ env.VERSION }}
+          name: " ${{ env.VERSION }} Autobuild"
+          body_path: release_notes.md
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact (Jar)
+        if: steps.check.outputs.should_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: autobuild-${{ env.VERSION }}
+          files: build/libs/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
