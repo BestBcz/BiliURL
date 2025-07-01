@@ -45,6 +45,7 @@ jobs:
             echo "should_build=true" >> $GITHUB_OUTPUT
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Stop if no changes
         if: steps.check.outputs.should_build == 'false'
