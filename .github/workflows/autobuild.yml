@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+         fetch-depth: 2
 
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -30,9 +32,10 @@ jobs:
       - name: Set version from Gradle file
         id: version
         run: |
-          VERSION=$(grep 'version =' build.gradle.kts | head -n1 | sed -E 's/.*"(.+)"$/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          VERSION=$(grep -E '^version\s*=' build.gradle.kts | head -n1 | sed -E 's/.*"(.+)"$/\1/')
+          BUILDTIME=$(date +'%Y%m%d-%H%M')
+          echo "BUILDTIME=$BUILDTIME" >> $GITHUB_ENV
+          echo "TAG=autobuild-${VERSION}-${BUILDTIME}" >> $GITHUB_ENV
 
       - name: Check if build needed
         id: check
@@ -64,7 +67,9 @@ jobs:
 
       - name: Build Project (Gradle)
         if: steps.check.outputs.should_build == 'true'
-        run: ./gradlew build
+        run: |
+           chmod +x ./gradlew
+           ./gradlew build
 
       - name: Generate Release Notes from Commits
         id: changelog
@@ -86,19 +91,20 @@ jobs:
 
           # 分类处理
           while IFS= read -r line; do
-            if [[ "$line" == feat:* ]]; then
-              NEW="${NEW}- ${line#feat: }\n"
-            elif [[ "$line" == fix:* ]]; then
-              FIXED="${FIXED}- ${line#fix: }\n"
-            elif [[ "$line" == refactor:* ]]; then
-              REFACTOR="${REFACTOR}- ${line#refactor: }\n"
-            elif [[ "$line" == docs:* ]]; then
-              DOCS="${DOCS}- ${line#docs: }\n"
-            elif [[ "$line" == style:* || "$line" == perf:* ]]; then
-              IMPROVED="${IMPROVED}- ${line#*: }\n"
-            else
-              OTHER="${OTHER}- ${line}\n"
-            fi
+          if [[ "$line" == feat:* ]]; then
+          NEW+=$'- '"${line#feat: }"$'\n'
+          elif [[ "$line" == fix:* ]]; then
+          FIXED+=$'- '"${line#fix: }"$'\n'
+          elif [[ "$line" == refactor:* ]]; then
+          REFACTOR+=$'- '"${line#refactor: }"$'\n'
+          elif [[ "$line" == docs:* ]]; then
+          DOCS+=$'- '"${line#docs: }"$'\n'
+          elif [[ "$line" == style:* || "$line" == perf:* ]]; then
+          IMPROVED+=$'- '"${line#*: }"$'\n'
+          else
+          OTHER+=$'- '"${line}"$'\n'
+          fi
+          
           done <<< "$COMMITS"
 
           # 输出到文件（按顺序）
@@ -115,7 +121,7 @@ jobs:
         if: steps.check.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: autobuild-${{ env.VERSION }}
+          tag_name: ${{ env.TAG }}
           name: " ${{ env.VERSION }} Autobuild"
           body_path: release_notes.md
           prerelease: true
@@ -126,7 +132,7 @@ jobs:
         if: steps.check.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: autobuild-${{ env.VERSION }}
+          tag_name: autobuild-${{ env.TAG }}
           files: build/libs/*.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
