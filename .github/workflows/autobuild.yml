@@ -37,7 +37,7 @@ jobs:
       - name: Check if build needed
         id: check
         run: |
-          git fetch origin main --depth=2
+          git fetch origin ${{ github.ref_name }} --depth=2
           CHANGED=$(git diff --name-only HEAD~1 HEAD)
           echo "Changed files:"
           echo "$CHANGED"
