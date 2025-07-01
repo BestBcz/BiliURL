@@ -117,22 +117,14 @@ jobs:
 
           cat release_notes.md
 
-      - name: Create Pre-release
+      - name: Create Pre-release + Upload Artifact
         if: steps.check.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
-          name: " ${{ env.VERSION }} Autobuild"
+          name: "${{ env.VERSION }} Autobuild"
           body_path: release_notes.md
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Artifact (Jar)
-        if: steps.check.outputs.should_build == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: autobuild-${{ env.TAG }}
           files: build/libs/*.jar
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
