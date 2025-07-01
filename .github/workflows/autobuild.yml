@@ -79,7 +79,7 @@ jobs:
           echo "" >> release_notes.md
 
           # 获取最近10次提交（你可以修改 HEAD~10）
-          COMMITS=$(git log --pretty=format:"%s (%an)" HEAD~10..HEAD | grep -v 'dependabot')
+          COMMITS=$(git log -n 10 --pretty=format:"%s (%an)" | grep -v 'dependabot')
 
           # 初始化分类变量
           NEW=""
