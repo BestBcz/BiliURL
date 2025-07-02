@@ -40,7 +40,6 @@ jobs:
       - name: Check if build needed
         id: check
         run: |
-          
           git fetch origin master --depth=2
 
           # 如果是手动触发，直接构建
@@ -49,8 +48,17 @@ jobs:
             exit 0
           fi
 
-          # 检查变动文件
-          CHANGED=$(git diff --name-only HEAD~1 HEAD || true)
+          # 获取 HEAD 和 HEAD^，防止 HEAD~1 不存在导致误判
+          HEAD_HASH=$(git rev-parse HEAD)
+          PARENT_HASH=$(git rev-parse HEAD^ || echo "")
+
+          if [[ -z "$PARENT_HASH" ]]; then
+            echo "Only one commit found, no diff base. Skipping."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$PARENT_HASH" "$HEAD_HASH")
           echo "Changed files:"
           echo "$CHANGED"
 
@@ -128,3 +136,9 @@ jobs:
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+      - name: Debug Trigger Info
+        run: |
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Commit SHA: $(git rev-parse HEAD)"
