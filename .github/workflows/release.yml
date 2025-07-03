@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    # 提交信息包含类似 v1.1.7、v2.0.0-beta 等时触发
+    paths-ignore:
+      - '.github/**'
+    tags-ignore:
+      - '*'
+    # 条件触发 commit message 中含 v1.x.x 或 v1.x.x-beta 等
+    # 实际匹配通过 job 内 shell 处理
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Generate Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 必须拉取完整历史以获取 tag 范围
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Extract version from Gradle
+        id: version
+        run: |
+          VERSION=$(grep -E '^version\s*=' build.gradle.kts | head -n1 | sed -E 's/.*"(.+)"$/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if release commit
+        id: check_release
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Last commit message: $COMMIT_MSG"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual trigger: should_release=true"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          elif echo "$COMMIT_MSG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "Release commit detected: $COMMIT_MSG"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "No release commit detected. Skipping."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop if not release
+        if: steps.check_release.outputs.should_release == 'false'
+        run: echo "Not a release commit, exiting."
+
+      - name: Build project
+        if: steps.check_release.outputs.should_release == 'true'
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build
+
+      - name: Generate Changelog from previous tag
+        if: steps.check_release.outputs.should_release == 'true'
+        id: changelog
+        run: |
+          echo "## Changelog" > release_notes.md
+          echo "" >> release_notes.md
+
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v 'autobuild' | tail -n 1)
+          echo "Previous tag: $PREV_TAG"
+          COMMITS=$(git log --pretty=format:"%s (%an)" "$PREV_TAG"..HEAD | grep -v 'dependabot')
+
+          NEW=""
+          FIXED=""
+          REFACTOR=""
+          DOCS=""
+          IMPROVED=""
+          OTHER=""
+
+          while IFS= read -r line; do
+            if [[ "$line" == feat:* ]]; then
+              NEW+=$'- '"${line#feat: }"$'\n'
+            elif [[ "$line" == fix:* ]]; then
+              FIXED+=$'- '"${line#fix: }"$'\n'
+            elif [[ "$line" == refactor:* ]]; then
+              REFACTOR+=$'- '"${line#refactor: }"$'\n'
+            elif [[ "$line" == docs:* ]]; then
+              DOCS+=$'- '"${line#docs: }"$'\n'
+            elif [[ "$line" == style:* || "$line" == perf:* ]]; then
+              IMPROVED+=$'- '"${line#*: }"$'\n'
+            else
+              OTHER+=$'- '"${line}"$'\n'
+            fi
+          done <<< "$COMMITS"
+
+          [[ -n "$NEW" ]] && echo -e "### New\n$NEW" >> release_notes.md
+          [[ -n "$FIXED" ]] && echo -e "### Fixed\n$FIXED" >> release_notes.md
+          [[ -n "$REFACTOR" ]] && echo -e "### Refactor\n$REFACTOR" >> release_notes.md
+          [[ -n "$DOCS" ]] && echo -e "### Documentation\n$DOCS" >> release_notes.md
+          [[ -n "$IMPROVED" ]] && echo -e "### Improved\n$IMPROVED" >> release_notes.md
+          [[ -n "$OTHER" ]] && echo -e "### Other Changes\n$OTHER" >> release_notes.md
+
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "v${{ env.VERSION }} Release"
+          body_path: release_notes.md
+          files: build/libs/*.jar
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
