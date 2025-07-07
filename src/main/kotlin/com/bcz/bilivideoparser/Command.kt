@@ -49,7 +49,7 @@ object BiliVideoParserCommand : SimpleCommand(
                 removeblack # 移除黑名单
                 listgroups # 查看群组列表
                 sendlink # 是否发送解析后的视频链接
-                askdownload 是否开启询问
+                askdownload # 是否开启询问
                 """.trimIndent()
             )
             return
