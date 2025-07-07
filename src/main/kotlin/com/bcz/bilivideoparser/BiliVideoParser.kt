@@ -187,7 +187,13 @@ object BiliVideoParser : KotlinPlugin(
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             connection.connect()
+
+            if (connection.responseCode != 200) {
+                logger.error("封面图下载失败，HTTP状态码: ${connection.responseCode}")
+                return null
+            }
 
             connection.inputStream.use { input ->
                 rawImageFile.outputStream().use { output ->
@@ -195,17 +201,40 @@ object BiliVideoParser : KotlinPlugin(
                 }
             }
 
+            logger.info("原始封面图下载完成，文件大小: ${rawImageFile.length()} bytes")
+
             // 解码成 BufferedImage
-            val image = ImageIO.read(rawImageFile)
-            if (image == null) {
+            val originalImage = ImageIO.read(rawImageFile)
+            if (originalImage == null) {
                 logger.error("无法解码封面图（非标准图像格式）")
                 rawImageFile.delete()
                 return null
             }
 
+            logger.info("封面图解码成功，尺寸: ${originalImage.width}x${originalImage.height}")
+
+            // 创建新的RGB图像来处理透明背景
+            val rgbImage = BufferedImage(originalImage.width, originalImage.height, BufferedImage.TYPE_INT_RGB)
+            val graphics = rgbImage.createGraphics()
+            
+            // 设置白色背景（JPG不支持透明）
+            graphics.color = Color.WHITE
+            graphics.fillRect(0, 0, originalImage.width, originalImage.height)
+            
+            // 绘制原图像
+            graphics.drawImage(originalImage, 0, 0, null)
+            graphics.dispose()
+
             // 转换为 JPG 并保存
-            ImageIO.write(image, "jpg", jpgFile)
-            logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}")
+            val success = ImageIO.write(rgbImage, "jpg", jpgFile)
+            if (!success) {
+                logger.error("封面图转 JPG 失败")
+                rawImageFile.delete()
+                jpgFile.delete()
+                return null
+            }
+            
+            logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}，文件大小: ${jpgFile.length()} bytes")
 
             // 删除原始图片文件
             rawImageFile.delete()
@@ -276,22 +305,28 @@ object BiliVideoParser : KotlinPlugin(
         // 下载并发送封面图（如果提供了 thumbnailUrl）
         var thumbnailFile: File? = null
         if (thumbnailUrl != null) {
-            thumbnailFile = downloadThumbnail(thumbnailUrl)
-            if (thumbnailFile != null) {
-                val thumbnailResource = thumbnailFile.toExternalResource("jpg")
-                try {
-                    val imageMessage = group.uploadImage(thumbnailResource)
-                    group.sendMessage(imageMessage)
-                    logger.info("✅ 封面图发送成功: ${thumbnailFile.absolutePath}")
-                } catch (e: Exception) {
-                    logger.error("⚠️ 封面图发送失败: ${e.message}", e)
-                } finally {
-                    withContext(Dispatchers.IO) {
-                        thumbnailResource.close()
+            try {
+                thumbnailFile = downloadThumbnail(thumbnailUrl)
+                if (thumbnailFile != null) {
+                    val thumbnailResource = thumbnailFile.toExternalResource("jpg")
+                    try {
+                        val imageMessage = group.uploadImage(thumbnailResource)
+                        group.sendMessage(imageMessage)
+                        logger.info("✅ 封面图发送成功: ${thumbnailFile.absolutePath}")
+                    } catch (e: Exception) {
+                        logger.error("⚠️ 封面图发送失败: ${e.message}", e)
+                        // 封面图发送失败不影响视频发送，继续使用默认缩略图
+                    } finally {
+                        withContext(Dispatchers.IO) {
+                            thumbnailResource.close()
+                        }
                     }
+                } else {
+                    logger.warning("无法下载封面图: $thumbnailUrl，将使用默认缩略图")
                 }
-            } else {
-                logger.warning("无法下载封面图: $thumbnailUrl")
+            } catch (e: Exception) {
+                logger.error("封面图处理过程中发生异常: ${e.message}", e)
+                // 异常情况下继续使用默认缩略图
             }
         }
 
