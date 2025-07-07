@@ -65,7 +65,7 @@ jobs:
         if: steps.check_release.outputs.should_release == 'true'
         run: |
           chmod +x ./gradlew
-          ./gradlew build
+          ./gradlew clean buildPlugin -x miraiPrepareMetadata
 
       - name: Generate Changelog from previous tag
         if: steps.check_release.outputs.should_release == 'true'
