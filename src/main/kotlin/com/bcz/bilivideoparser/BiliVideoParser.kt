@@ -37,7 +37,6 @@ object BiliVideoParser : KotlinPlugin(
 
 {
 
-    //autobuild
 
 
 
@@ -156,9 +155,11 @@ object BiliVideoParser : KotlinPlugin(
         val outputFile = File(DOWNLOAD_DIR, "downloaded_video_$bvId.mp4")
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
+            logger.info("开始下载视频 $bvId")
             val process = ProcessBuilder(
-                "yt-dlp", "-f", "bv*+ba*",
+                "yt-dlp", "-f", "bv+ba", "-S", "+size",
                 "--merge-output-format", "mp4",
+                "--match-filter", "filesize<100M",
                 "-o", outputFile.absolutePath,
                 bilibiliUrl
             ).start()
@@ -352,8 +353,11 @@ object BiliVideoParser : KotlinPlugin(
     private suspend fun proceedToDownload(group: Group, bvId: String, details: VideoDetails?) {
         val videoFile = downloadBiliVideo(bvId)
         if (videoFile != null) {
+            val fileSizeMB = videoFile.length() / (1024 * 1024)
+            logger.error("✅ 视频下载完成 (${fileSizeMB}MB)，正在发送...")
             sendShortVideoMessage(group, videoFile, details?.pic)
         } else {
+            logger.error("❌ 视频下载失败，可能视频过大或网络问题，请稍后重试")
             logger.error("⚠️ 视频下载失败，请稍后重试")
         }
     }
