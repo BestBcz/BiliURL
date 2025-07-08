@@ -486,6 +486,12 @@ object BiliVideoParser : KotlinPlugin(
                 return@subscribeAlways
             }
 
+            // 检查群组黑白名单权限
+            if (!Config.isGroupAllowed(group.id)) {
+                logger.info("群 ${group.id} 不在允许的群组列表中，跳过处理")
+                return@subscribeAlways
+            }
+
             val rawText = message.content
             val miraiCode = message.serializeToMiraiCode()
 
