@@ -41,6 +41,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     var askBeforeDownload: Boolean by value(false)  // 默认 false，直接按 enableDownload 执行
 
     // 群组判断逻辑
+    // 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启
+    // 2. 若白名单为空，则不使用白名单，除黑名单的群都开启下载
+    // 3. 若都不填，那默认全部开启
     fun isGroupAllowed(groupId: Long): Boolean {
         return when {
             groupWhiteList.isNotEmpty() -> groupId in groupWhiteList
