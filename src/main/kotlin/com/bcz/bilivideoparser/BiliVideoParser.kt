@@ -156,21 +156,44 @@ object BiliVideoParser : KotlinPlugin(
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
             logger.info("开始下载视频 $bvId")
+            
+            // 下载视频，限制文件大小小于100MB
             val process = ProcessBuilder(
-                "yt-dlp", "-f", "bv+ba", "-S", "+size",
+                "yt-dlp", 
+                "-f", "bv+ba", 
+                "-S", "+size",
                 "--merge-output-format", "mp4",
-                "--match-filter", "filesize<100M",
+                "--max-filesize", "100M",
                 "-o", outputFile.absolutePath,
                 bilibiliUrl
-            ).start()
+            ).redirectErrorStream(true).start()
 
-            if (!process.waitFor(180, TimeUnit.SECONDS)) {
+            val output = StringBuilder()
+            val reader = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                output.append(line).append("\n")
+                logger.info("yt-dlp: $line")
+            }
+            reader.close()
+
+            val exitCode = if (process.waitFor(180, TimeUnit.SECONDS)) {
+                process.exitValue()
+            } else {
                 process.destroy()
                 logger.warning("视频下载超时: $bvId")
-                return null
+                -1
             }
 
-            return if (outputFile.exists()) outputFile else null
+            if (exitCode == 0 && outputFile.exists() && outputFile.length() > 0) {
+                val fileSizeMB = outputFile.length() / (1024 * 1024)
+                logger.info("✅ 视频下载成功: ${fileSizeMB}MB")
+                return outputFile
+            } else {
+                logger.error("❌ 视频下载失败，退出码: $exitCode")
+                logger.error("yt-dlp 输出: ${output.toString()}")
+                return null
+            }
         } catch (e: IOException) {
             logger.error("视频下载失败: ${e.message}")
             return null
@@ -386,14 +409,16 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     private suspend fun proceedToDownload(group: Group, bvId: String, details: VideoDetails?) {
+    
         val videoFile = downloadBiliVideo(bvId)
         if (videoFile != null) {
             val fileSizeMB = videoFile.length() / (1024 * 1024)
-            logger.error("✅ 视频下载完成 (${fileSizeMB}MB)，正在发送...")
+            logger.info("✅ 视频下载完成 (${fileSizeMB}MB)，正在发送...")
+
             sendShortVideoMessage(group, videoFile, details?.pic)
         } else {
             logger.error("❌ 视频下载失败，可能视频过大或网络问题，请稍后重试")
-            logger.error("⚠️ 视频下载失败，请稍后重试")
+            logger.error("❌ 视频下载失败，可能原因：\n1. 视频文件过大\n2. 网络连接问题\n3. yt-dlp 工具未正确安装\n请检查系统环境后重试")
         }
     }
 
