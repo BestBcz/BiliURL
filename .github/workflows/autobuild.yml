@@ -1,9 +1,9 @@
-name: Auto Build
+name: AutoBuild
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 04 * * *"  # 每天北京时间 12:00
+    - cron: "0 04 * * *"  # 每天北京时间 12:00（UTC+8）
 
 permissions:
   contents: write
@@ -13,15 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check_and_build:
-    name: Check + Build + Release
+  autobuild:
+    name: AutoBuild & Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-         fetch-depth: 2
+          fetch-depth: 0  # ✅ 获取完整历史，便于 changelog 分析
 
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -29,31 +29,23 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set version from Gradle file
+      - name: Extract version from Gradle
         id: version
         run: |
           VERSION=$(grep -E '^version\s*=' build.gradle.kts | head -n1 | sed -E 's/.*"(.+)"$/\1/')
-          BUILDTIME=$(date +'%Y%m%d-%H%M')
-          echo "BUILDTIME=$BUILDTIME" >> $GITHUB_ENV
-          echo "TAG=autobuild-${VERSION}-${BUILDTIME}" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Check if build needed
+      - name: Detect meaningful changes
         id: check
         run: |
           git fetch origin master --depth=2
 
-          # 如果是手动触发，直接构建
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # 获取 HEAD 和 HEAD^，防止 HEAD~1 不存在导致误判
           HEAD_HASH=$(git rev-parse HEAD)
-          PARENT_HASH=$(git rev-parse HEAD^ || echo "")
+          PARENT_HASH=$(git rev-parse HEAD^ 2>/dev/null || echo "")
 
           if [[ -z "$PARENT_HASH" ]]; then
-            echo "Only one commit found, no diff base. Skipping."
+            echo "Only one commit found. Skipping."
             echo "should_build=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -67,29 +59,25 @@ jobs:
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
           fi
-      
 
-      - name: Stop if no changes
+      - name: Stop if no meaningful changes
         if: steps.check.outputs.should_build == 'false'
-        run: echo "No meaningful changes, skipping build."
+        run: echo "No changes detected. Skipping autobuild."
 
-      - name: Build Project (Gradle)
+      - name: Build project
         if: steps.check.outputs.should_build == 'true'
         run: |
-           chmod +x ./gradlew
-           ./gradlew build
+          chmod +x ./gradlew
+          ./gradlew build
 
-      - name: Generate Release Notes from Commits
-        id: changelog
+      - name: Generate changelog
         if: steps.check.outputs.should_build == 'true'
         run: |
-          echo "## Changelog" > release_notes.md
+          echo "## AutoBuild Changelog" > release_notes.md
           echo "" >> release_notes.md
 
-          # 获取最近10次提交（你可以修改 HEAD~10）
           COMMITS=$(git log -n 10 --pretty=format:"%s (%an)" | grep -v 'dependabot')
 
-          # 初始化分类变量
           NEW=""
           FIXED=""
           REFACTOR=""
@@ -97,25 +85,22 @@ jobs:
           IMPROVED=""
           OTHER=""
 
-          # 分类处理
           while IFS= read -r line; do
-          if [[ "$line" == feat:* ]]; then
-          NEW+=$'- '"${line#feat: }"$'\n'
-          elif [[ "$line" == fix:* ]]; then
-          FIXED+=$'- '"${line#fix: }"$'\n'
-          elif [[ "$line" == refactor:* ]]; then
-          REFACTOR+=$'- '"${line#refactor: }"$'\n'
-          elif [[ "$line" == docs:* ]]; then
-          DOCS+=$'- '"${line#docs: }"$'\n'
-          elif [[ "$line" == style:* || "$line" == perf:* ]]; then
-          IMPROVED+=$'- '"${line#*: }"$'\n'
-          else
-          OTHER+=$'- '"${line}"$'\n'
-          fi
-          
+            if [[ "$line" == feat:* ]]; then
+              NEW+=$'- '"${line#feat: }"$'\n'
+            elif [[ "$line" == fix:* ]]; then
+              FIXED+=$'- '"${line#fix: }"$'\n'
+            elif [[ "$line" == refactor:* ]]; then
+              REFACTOR+=$'- '"${line#refactor: }"$'\n'
+            elif [[ "$line" == docs:* ]]; then
+              DOCS+=$'- '"${line#docs: }"$'\n'
+            elif [[ "$line" == style:* || "$line" == perf:* ]]; then
+              IMPROVED+=$'- '"${line#*: }"$'\n'
+            else
+              OTHER+=$'- '"${line}"$'\n'
+            fi
           done <<< "$COMMITS"
 
-          # 输出到文件（按顺序）
           [[ -n "$NEW" ]] && echo -e "### New\n$NEW" >> release_notes.md
           [[ -n "$FIXED" ]] && echo -e "### Fixed\n$FIXED" >> release_notes.md
           [[ -n "$REFACTOR" ]] && echo -e "### Refactor\n$REFACTOR" >> release_notes.md
@@ -125,20 +110,14 @@ jobs:
 
           cat release_notes.md
 
-      - name: Create Pre-release + Upload Artifact
+      - name: Publish to `autobuild-latest`
         if: steps.check.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG }}
-          name: "${{ env.TAG }}"
+          tag_name: autobuild-latest  # ✅ 始终覆盖这个 tag
+          name: "Autobuild Latest"
           body_path: release_notes.md
           files: build/libs/*.jar
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-      - name: Debug Trigger Info
-        run: |
-          echo "Triggered by: ${{ github.event_name }}"
-          echo "Commit SHA: $(git rev-parse HEAD)"
