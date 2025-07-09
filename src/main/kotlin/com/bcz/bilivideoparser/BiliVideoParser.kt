@@ -43,7 +43,6 @@ object BiliVideoParser : KotlinPlugin(
     // 定义下载目录
     private val DOWNLOAD_DIR = Paths.get("bilidownload").toFile().apply {
     if (!exists()) mkdirs() // 创建目录如果不存在
-    logger.info("下载目录已设置: $absolutePath")
 }
 
     //删除旧文件
@@ -51,10 +50,8 @@ object BiliVideoParser : KotlinPlugin(
         val files = DOWNLOAD_DIR.listFiles()
         files?.forEach {
             if (it.exists() && it.isFile) {
-                if (it.delete()) {
-                    logger.info("清理旧文件: ${it.absolutePath}")
-                } else {
-                    logger.warning("无法删除文件: ${it.absolutePath}")
+                if (!it.delete()) {
+                    logger.warning("无法删除文件: ${it.name}")
                 }
             }
         }
@@ -71,22 +68,15 @@ object BiliVideoParser : KotlinPlugin(
                     val cutoff = now - 24 * 60 * 60 * 1000 // 24小时前
 
                     val files = DOWNLOAD_DIR.listFiles()
-                    var deletedCount = 0
-
                     files?.forEach { file ->
                         if (file.isFile && file.lastModified() < cutoff) {
-                            if (file.delete()) {
-                                //logger.info("🧹 定时清理旧文件: ${file.name}")
-                                deletedCount++
-                            } else {
-                                logger.warning("⚠️ 无法删除旧文件: ${file.name}")
+                            if (!file.delete()) {
+                                logger.warning("无法删除旧文件: ${file.name}")
                             }
                         }
                     }
-
-                    //logger.info("✅ 定时清理完成，共删除 $deletedCount 个旧文件")
                 } catch (e: Exception) {
-                    logger.error("❌ 定时清理任务异常: ${e.message}", e)
+                    logger.error("定时清理任务异常: ${e.message}")
                 }
 
                 delay(24 * 60 * 60 * 1000) // 每24小时执行一次
@@ -155,7 +145,7 @@ object BiliVideoParser : KotlinPlugin(
         val outputFile = File(DOWNLOAD_DIR, "downloaded_video_$bvId.mp4")
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
-            logger.info("开始下载视频 $bvId")
+            logger.info("开始下载视频: $bvId")
             
             // 下载视频，限制文件大小小于100MB
             val process = ProcessBuilder(
@@ -173,7 +163,6 @@ object BiliVideoParser : KotlinPlugin(
             var line: String?
             while (reader.readLine().also { line = it } != null) {
                 output.append(line).append("\n")
-                logger.info("yt-dlp: $line")
             }
             reader.close()
 
@@ -186,22 +175,18 @@ object BiliVideoParser : KotlinPlugin(
             }
 
             if (exitCode == 0 && outputFile.exists() && outputFile.length() > 0) {
-                val fileSizeMB = outputFile.length() / (1024 * 1024)
-                logger.info("✅ 视频下载成功: ${fileSizeMB}MB")
                 return outputFile
             } else {
-                logger.error("❌ 视频下载失败，退出码: $exitCode")
-                logger.error("yt-dlp 输出: ${output.toString()}")
+                logger.error("视频下载失败: $bvId")
                 return null
             }
         } catch (e: IOException) {
-            logger.error("视频下载失败: ${e.message}")
+            logger.error("视频下载异常: ${e.message}")
             return null
         }
     }
 
     private fun downloadThumbnail(url: String): File? {
-        logger.info("尝试下载封面图: $url")
         val rawImageFile = File(DOWNLOAD_DIR, "raw_thumbnail_${url.hashCode()}.img")
         val jpgFile = File(DOWNLOAD_DIR, "thumbnail_${url.hashCode()}.jpg")
 
@@ -214,7 +199,7 @@ object BiliVideoParser : KotlinPlugin(
             connection.connect()
 
             if (connection.responseCode != 200) {
-                logger.error("封面图下载失败，HTTP状态码: ${connection.responseCode}")
+                logger.error("封面图下载失败: HTTP ${connection.responseCode}")
                 return null
             }
 
@@ -224,17 +209,13 @@ object BiliVideoParser : KotlinPlugin(
                 }
             }
 
-            logger.info("原始封面图下载完成，文件大小: ${rawImageFile.length()} bytes")
-
             // 解码成 BufferedImage
             val originalImage = ImageIO.read(rawImageFile)
             if (originalImage == null) {
-                logger.error("无法解码封面图（非标准图像格式）")
+                logger.error("无法解码封面图")
                 rawImageFile.delete()
                 return null
             }
-
-            logger.info("封面图解码成功，尺寸: ${originalImage.width}x${originalImage.height}")
 
             // 创建新的RGB图像来处理透明背景
             val rgbImage = BufferedImage(originalImage.width, originalImage.height, BufferedImage.TYPE_INT_RGB)
@@ -251,19 +232,17 @@ object BiliVideoParser : KotlinPlugin(
             // 转换为 JPG 并保存
             val success = ImageIO.write(rgbImage, "jpg", jpgFile)
             if (!success) {
-                logger.error("封面图转 JPG 失败")
+                logger.error("封面图转JPG失败")
                 rawImageFile.delete()
                 jpgFile.delete()
                 return null
             }
             
-            logger.info("封面图转 JPG 成功: ${jpgFile.absolutePath}，文件大小: ${jpgFile.length()} bytes")
-
             // 删除原始图片文件
             rawImageFile.delete()
             return jpgFile
         } catch (e: Exception) {
-            logger.error("封面图处理失败: ${e.message}", e)
+            logger.error("封面图处理失败: ${e.message}")
             rawImageFile.delete()
             jpgFile.delete()
             return null
@@ -287,9 +266,8 @@ object BiliVideoParser : KotlinPlugin(
                 graphics.dispose()
 
                 ImageIO.write(image, "jpg", defaultThumb)
-                logger.info("✅ 生成默认缩略图: ${defaultThumb.absolutePath}")
             } catch (e: Exception) {
-                logger.error("❌ 生成默认缩略图失败: ${e.message}")
+                logger.error("生成默认缩略图失败: ${e.message}")
             }
         }
         return defaultThumb
@@ -316,7 +294,7 @@ object BiliVideoParser : KotlinPlugin(
      */
     private suspend fun sendShortVideoMessage( group: Group, videoFile: File, thumbnailUrl: String? = null ) {
         if (!videoFile.exists()) {
-            logger.warning("视频文件不存在: ${videoFile.absolutePath}")
+            logger.warning("视频文件不存在: ${videoFile.name}")
             group.sendMessage("❌ 视频文件不存在")
             return
         }
@@ -335,20 +313,15 @@ object BiliVideoParser : KotlinPlugin(
                     try {
                         val imageMessage = group.uploadImage(thumbnailResource)
                         group.sendMessage(imageMessage)
-                        logger.info("✅ 封面图发送成功: ${thumbnailFile.absolutePath}")
-                    } catch (e: Exception) {
-                        logger.error("⚠️ 封面图发送失败: ${e.message}", e)
-                        // 封面图发送失败不影响视频发送，继续使用默认缩略图
-                    } finally {
+                            } catch (e: Exception) {
+            // 封面图发送失败不影响视频发送，继续使用默认缩略图
+        } finally {
                         withContext(Dispatchers.IO) {
                             thumbnailResource.close()
                         }
                     }
-                } else {
-                    logger.warning("无法下载封面图: $thumbnailUrl，将使用默认缩略图")
                 }
             } catch (e: Exception) {
-                logger.error("封面图处理过程中发生异常: ${e.message}", e)
                 // 异常情况下继续使用默认缩略图
             }
         }
@@ -359,17 +332,10 @@ object BiliVideoParser : KotlinPlugin(
         val thumbnailResource = thumbnailToUse.toExternalResource("jpg")
 
         try {
-
             val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
             group.sendMessage(shortVideo)
-
-            logger.info("✅ 视频短消息发送成功: ${videoFile.name}")
         } catch (e: Exception) {
-
-            logger.error("⚠️ 视频发送失败: ${e.message}", e)
-            //group.sendMessage("⚠️ 视频发送失败: ${e.message}")
-
-
+            logger.error("视频发送失败: ${e.message}")
         } finally {
             withContext(Dispatchers.IO) {
                 videoResource.close()
@@ -378,9 +344,9 @@ object BiliVideoParser : KotlinPlugin(
                 thumbnailResource.close()
             }
             // 删除相关文件
-            videoFile.delete().let { logger.info("删除视频文件: ${videoFile.absolutePath}, 结果: $it") }
-            thumbnailToUse.delete().let { logger.info("删除缩略图文件: ${thumbnailToUse.absolutePath}, 结果: $it") }
-            thumbnailFile?.delete()?.let { logger.info("删除下载的封面图: ${thumbnailFile.absolutePath}, 结果: $it") }
+            videoFile.delete()
+            thumbnailToUse.delete()
+            thumbnailFile?.delete()
         }
     }
 
@@ -492,28 +458,20 @@ object BiliVideoParser : KotlinPlugin(
 
 
     override fun onEnable() {
-        logger.info("Bilibili 视频解析插件已启用 - 开始加载")
+        logger.info("BiliVideoParser 插件已启用")
 
         Config.reload()
-
-        logger.info("配置加载完成，enableParsing = ${Config.enableParsing}, enableDownload = ${Config.enableDownload}, enableDetailedInfo = ${Config.enableDetailedInfo}")
-
-        CommandManager.registerCommand(BiliVideoParserCommand) // 注册控制台指令
-
+        CommandManager.registerCommand(BiliVideoParserCommand)
         cleanupOldFiles()
         startAutoCleanupJob()
 
-        globalEventChannel().subscribeAlways<GroupMessageEvent> {   //收到群消息
-            //logger.info("收到群消息，原始内容: ${this.message.serializeToMiraiCode()}")
-
+        globalEventChannel().subscribeAlways<GroupMessageEvent> {
             if (!Config.enableParsing) {
-                logger.info("解析功能已禁用，跳过处理")
                 return@subscribeAlways
             }
 
             // 检查群组黑白名单权限
             if (!Config.isGroupAllowed(group.id)) {
-                logger.info("群 ${group.id} 不在允许的群组列表中，跳过处理")
                 return@subscribeAlways
             }
 
@@ -541,8 +499,6 @@ object BiliVideoParser : KotlinPlugin(
                 }
             }
         }
-
-        logger.info("Bilibili 视频解析插件已启用 - 加载完成")
     }
 }
 
