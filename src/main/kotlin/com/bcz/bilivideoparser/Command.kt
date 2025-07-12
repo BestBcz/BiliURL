@@ -96,7 +96,6 @@ object BiliVideoParserCommand : SimpleCommand(
         }
         val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
         setter(boolValue)
-        Config.forceSave()
         sendMessage("✅ 配置已更新：$name = $boolValue")
     }
 
@@ -111,7 +110,6 @@ object BiliVideoParserCommand : SimpleCommand(
                 sendMessage("❌ QQ $qq 已是管理员")
             } else {
                 Config.adminQQs.add(qq)
-                Config.forceSave()
                 sendMessage("✅ 已添加管理员: $qq")
             }
         } else {
@@ -121,7 +119,6 @@ object BiliVideoParserCommand : SimpleCommand(
                 sendMessage("❌ 无法移除最后一个管理员")
             } else {
                 Config.adminQQs.remove(qq)
-                Config.forceSave()
                 sendMessage("✅ 已移除管理员: $qq")
             }
         }
@@ -148,7 +145,5 @@ object BiliVideoParserCommand : SimpleCommand(
                 sendMessage("⚠️ 群 $groupId 不在${if (whitelist) "白" else "黑"}名单中")
             }
         }
-
-        Config.forceSave()
     }
 }

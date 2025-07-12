@@ -27,7 +27,6 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("管理员 QQ 号列表，只有这些用户可以使用指令")
     var adminQQs: MutableList<Long> by value(mutableListOf(123456789L, 987654321L))
 
-    // 群组黑白名单控制
     @ValueDescription("白名单群号列表（优先生效）")
     var groupWhiteList: MutableSet<Long> by value(mutableSetOf())
 
@@ -37,13 +36,15 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("是否发送解析后的视频链接")
     var enableSendLink: Boolean by value(true)
 
-    @ValueDescription("是否在下载前询问用户")
-    var askBeforeDownload: Boolean by value(false)  // 默认 false，直接按 enableDownload 执行
+    @ValueDescription("是否在下载前询问用户-默认false")
+    var askBeforeDownload: Boolean by value(false)
 
-    // 群组判断逻辑
-    // 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启
-    // 2. 若白名单为空，则不使用白名单，除黑名单的群都开启下载
-    // 3. 若都不填，那默认全部开启
+    /**
+     * 群组权限判断逻辑
+     * 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启
+     * 2. 若白名单为空，则不使用白名单，除黑名单的群都开启下载
+     * 3. 若都不填，那默认全部开启
+     */
     fun isGroupAllowed(groupId: Long): Boolean {
         return when {
             groupWhiteList.isNotEmpty() -> groupId in groupWhiteList
