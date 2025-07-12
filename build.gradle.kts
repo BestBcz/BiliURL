@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "1.8.0"
     id("net.mamoe.mirai-console") version "2.16.0"
-    id("com.github.johnrengelman.shadow") version "8.1.1" // 确保使用最新版本
+    id("com.github.johnrengelman.shadow") version "8.1.1" // 最新版本
 }
 
 group = "com.bcz"
@@ -10,7 +10,7 @@ version = "1.1.10"
 repositories {
     maven("https://maven.aliyun.com/repository/public") // 加速依赖下载
     maven("https://maven.mamoe.net/releases") // Mirai 依赖
-    mavenCentral() // 必须保留 mavenCentral 用于加载依赖
+    mavenCentral() // 加载依赖
 }
 
 dependencies {
