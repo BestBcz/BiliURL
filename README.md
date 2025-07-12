@@ -5,7 +5,9 @@
 )](https://mirai.mamoe.net/topic/2795/biliurl%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E8%A7%A3%E6%9E%90qq%E5%88%86%E4%BA%AB%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9%E5%B0%8F%E7%A8%8B%E5%BA%8F%E8%A7%86%E9%A2%91%E5%9C%B0%E5%9D%80%E7%9A%84%E5%B0%8F%E6%8F%92%E4%BB%B6)
 
 -------------------------
-#### 🌱 解析QQ中分享的哔哩哔哩小程序视频并下载发送的mirai插件
+#### 🌱 一个智能解析B站视频链接并支持自动下载发送到QQ群的Mirai插件 
+#### 🌱A Mirai plugin that intelligently parses Bilibili video links and supports automatic downloading and sending to QQ groups
+
 
 ---------------------------
 ### 🛠️安装&依赖前置
