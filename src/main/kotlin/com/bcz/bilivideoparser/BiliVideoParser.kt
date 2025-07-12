@@ -2,6 +2,7 @@ package com.bcz.bilivideoparser
 
 import com.google.gson.Gson
 import kotlinx.coroutines.*
+import kotlinx.coroutines.async
 import net.mamoe.mirai.console.command.CommandManager
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
@@ -272,81 +273,114 @@ object BiliVideoParser : KotlinPlugin(
         }
         return defaultThumb
     }
-    // 检查视频文件是否稳定写入
-    private fun waitUntilFileReady(file: File, timeoutMillis: Long = 15000): Boolean {
-        val start = System.currentTimeMillis()
-        var lastLength = -1L
-        while (System.currentTimeMillis() - start < timeoutMillis) {
-            if (!file.exists()) {
-                Thread.sleep(500)
-                continue
-            }
-            val len = file.length()
-            if (len > 0 && len == lastLength) return true
-            lastLength = len
-            Thread.sleep(500)
-        }
-        return false
-    }
 
-    /**
-     * 发送视频消息
-     */
-    private suspend fun sendShortVideoMessage( group: Group, videoFile: File, thumbnailUrl: String? = null ) {
+
+     //发送视频消息 -并行处理
+
+    private suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null) {
         if (!videoFile.exists()) {
             logger.warning("视频文件不存在: ${videoFile.name}")
-            group.sendMessage("❌ 视频文件不存在")
-            return
-        }
-        if (!waitUntilFileReady(videoFile)) {
-            group.sendMessage("⚠️ 视频准备超时，请稍后再试")
             return
         }
 
-        // 下载并发送封面图（如果提供了 thumbnailUrl）
         var thumbnailFile: File? = null
-        if (thumbnailUrl != null) {
-            try {
-                thumbnailFile = downloadThumbnail(thumbnailUrl)
-                if (thumbnailFile != null) {
-                    val thumbnailResource = thumbnailFile.toExternalResource("jpg")
-                    try {
-                        val imageMessage = group.uploadImage(thumbnailResource)
-                        group.sendMessage(imageMessage)
-                            } catch (e: Exception) {
-            // 封面图发送失败不影响视频发送，继续使用默认缩略图
-        } finally {
-                        withContext(Dispatchers.IO) {
-                            thumbnailResource.close()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // 异常情况下继续使用默认缩略图
-            }
-        }
-
-        // 使用下载的封面图作为缩略图，失败则使用默认缩略图
-        val thumbnailToUse = thumbnailFile ?: generateDefaultThumbnail()
-        val videoResource = videoFile.toExternalResource("mp4")
-        val thumbnailResource = thumbnailToUse.toExternalResource("jpg")
+        var videoResource: net.mamoe.mirai.utils.ExternalResource? = null
+        var thumbnailResource: net.mamoe.mirai.utils.ExternalResource? = null
 
         try {
-            val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
-            group.sendMessage(shortVideo)
+            // 并行处理缩略图下载和视频资源准备
+            val thumbnailJob = async(Dispatchers.IO) {
+                if (thumbnailUrl != null) {
+                    try {
+                        downloadThumbnail(thumbnailUrl)
+                    } catch (e: Exception) {
+                        logger.warning("封面图下载失败: ${e.message}")
+                        null
+                    }
+                } else null
+            }
+
+            val videoResourceJob = async(Dispatchers.IO) {
+                try {
+                    videoFile.toExternalResource("mp4")
+                } catch (e: Exception) {
+                    logger.error("视频资源准备失败: ${e.message}")
+                    null
+                }
+            }
+
+            // 等待缩略图下载完成
+            thumbnailFile = thumbnailJob.await()
+            
+            // 准备缩略图资源
+            val thumbnailToUse = thumbnailFile ?: generateDefaultThumbnail()
+            thumbnailResource = thumbnailToUse.toExternalResource("jpg")
+            
+            // 等待视频资源准备完成
+            videoResource = videoResourceJob.await()
+            
+            if (videoResource == null) {
+                logger.error("视频资源准备失败")
+                return
+            }
+
+            // 发送封面图（可选，失败不影响视频发送）
+            if (thumbnailFile != null) {
+                try {
+                    withTimeout(5000) { // 5秒超时
+                        val imageMessage = group.uploadImage(thumbnailResource)
+                        group.sendMessage(imageMessage)
+                    }
+                } catch (e: Exception) {
+                    logger.warning("封面图发送失败，继续发送视频: ${e.message}")
+                }
+            }
+
+            // 发送视频 - 使用更长的超时时间
+            try {
+                withTimeout(30000) { // 30秒超时
+                    val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
+                    group.sendMessage(shortVideo)
+                    logger.info("✅ 视频发送成功: ${videoFile.name}")
+                }
+            } catch (e: Exception) {
+                // 检查是否是超时错误
+                if (e.message?.contains("timeout", ignoreCase = true) == true || 
+                    e.message?.contains("Timed out", ignoreCase = true) == true) {
+                    logger.warning("视频发送超时，但可能已成功发送: ${e.message}")
+                    // 不向用户显示错误，因为可能实际发送成功了
+                } else {
+                    logger.error("视频发送失败: ${e.message}")
+                }
+            }
+
         } catch (e: Exception) {
-            logger.error("视频发送失败: ${e.message}")
+            logger.error("视频发送过程异常: ${e.message}")
         } finally {
+            // 清理资源
             withContext(Dispatchers.IO) {
-                videoResource.close()
+                try {
+                    videoResource?.close()
+                } catch (e: Exception) {
+                    logger.warning("关闭视频资源失败: ${e.message}")
+                }
+                try {
+                    thumbnailResource?.close()
+                } catch (e: Exception) {
+                    logger.warning("关闭缩略图资源失败: ${e.message}")
+                }
             }
+            
+            // 延迟删除文件，确保发送完成
             withContext(Dispatchers.IO) {
-                thumbnailResource.close()
+                delay(2000) // 等待2秒确保发送完成
+                try {
+                    videoFile.delete()
+                    thumbnailFile?.delete()
+                } catch (e: Exception) {
+                    logger.warning("删除临时文件失败: ${e.message}")
+                }
             }
-            // 删除相关文件
-            videoFile.delete()
-            thumbnailToUse.delete()
-            thumbnailFile?.delete()
         }
     }
 
@@ -383,8 +417,7 @@ object BiliVideoParser : KotlinPlugin(
 
             sendShortVideoMessage(group, videoFile, details?.pic)
         } else {
-            logger.error("❌ 视频下载失败，可能视频过大或网络问题，请稍后重试")
-            logger.error("❌ 视频下载失败，可能原因：\n1. 视频文件过大\n2. 网络连接问题\n3. yt-dlp 工具未正确安装\n请检查系统环境后重试")
+            logger.error("❌ 视频下载失败，可能原因：\n1. 视频文件过大\n2. 网络连接问题\n3. yt-dlp 工具未正确安装")
         }
     }
 
@@ -411,7 +444,6 @@ object BiliVideoParser : KotlinPlugin(
     //公共处理函数
     private suspend fun handleParsedBVId(group: Group, bvId: String, videoLink: String, senderId: Long) {
         val details = getVideoDetails(bvId)
-
 
         var message = ""
 
@@ -440,7 +472,6 @@ object BiliVideoParser : KotlinPlugin(
                 group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘是’（30秒内有效）")
                 try {
                     val reply = waitForUserReply(group, senderId)
-
                     val keywords = listOf("下载", "是", "要")
                     if (keywords.any { reply?.contains(it) == true }) {
                         proceedToDownload(group, bvId, details)
@@ -448,9 +479,10 @@ object BiliVideoParser : KotlinPlugin(
                         group.sendMessage("✅ 已忽略视频下载请求")
                     }
                 } catch (e: TimeoutCancellationException) {
-                    group.sendMessage("⌛ 下载请求超时，已跳过下载")
+                    logger.info("⌛ 下载请求超时，已跳过下载")
                 }
             } else if (Config.enableDownload) {
+                logger.info("🚀 自动下载模式，开始处理视频: $bvId")
                 proceedToDownload(group, bvId, details)
             }
         }
