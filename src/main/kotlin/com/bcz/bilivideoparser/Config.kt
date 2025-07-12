@@ -56,24 +56,13 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
         return qq in adminQQs
     }
 
-    private const val CURRENT_CONFIG_VERSION = 4 // [MODIFIED]
+    private const val CURRENT_CONFIG_VERSION = 4
 
     @OptIn(ConsoleExperimentalApi::class)
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {
         super.onInit(owner, storage)
         if (configVersion < CURRENT_CONFIG_VERSION) {
             configVersion = CURRENT_CONFIG_VERSION
-            forceSave()
-        }
-    }
-
-    fun forceSave() {
-        try {
-            val method = AutoSavePluginConfig::class.java.getDeclaredMethod("save")
-            method.isAccessible = true
-            method.invoke(this)
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }
