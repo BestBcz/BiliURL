@@ -78,7 +78,7 @@ jobs:
         if: steps.check_release.outputs.should_release == 'true'
         id: changelog
         run: |
-          echo "## Changelog" > release_notes.md
+          echo "## 🎨Changelog" > release_notes.md
           echo "" >> release_notes.md
 
           git fetch --tags
@@ -136,12 +136,12 @@ jobs:
             fi
           done <<< "$COMMITS"
 
-          [[ -n "$NEW" ]] && echo -e "### New\n$NEW" >> release_notes.md
-          [[ -n "$FIXED" ]] && echo -e "### Fixed\n$FIXED" >> release_notes.md
-          [[ -n "$REFACTOR" ]] && echo -e "### Refactor\n$REFACTOR" >> release_notes.md
-          [[ -n "$DOCS" ]] && echo -e "### Documentation\n$DOCS" >> release_notes.md
-          [[ -n "$IMPROVED" ]] && echo -e "### Improved\n$IMPROVED" >> release_notes.md
-          [[ -n "$OTHER" ]] && echo -e "### Other Changes\n$OTHER" >> release_notes.md
+          [[ -n "$NEW" ]] && echo -e "### ✅New\n$NEW" >> release_notes.md
+          [[ -n "$FIXED" ]] && echo -e "### 🛠Fixed\n$FIXED" >> release_notes.md
+          [[ -n "$REFACTOR" ]] && echo -e "### 🧽Refactor\n$REFACTOR" >> release_notes.md
+          [[ -n "$DOCS" ]] && echo -e "### 📚Documentation\n$DOCS" >> release_notes.md
+          [[ -n "$IMPROVED" ]] && echo -e "### 🚀Improved\n$IMPROVED" >> release_notes.md
+          [[ -n "$OTHER" ]] && echo -e "### 🔄Other Changes\n$OTHER" >> release_notes.md
 
           cat release_notes.md
 

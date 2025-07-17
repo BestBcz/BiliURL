@@ -4,7 +4,7 @@
 | `fix:`      | 修复 bug    | 🛠 `Fixed`         |
 | `refactor:` | 代码重构      | 🧽 `Refactor`      |
 | `docs:`     | 文档更新      | 📚 `Documentation` |
-| `style:`    | 样式优化（无逻辑） | 🎨 `Improved`      |
+| `style:`    | 样式优化（无逻辑） | 🚀 `Improved`      |
 | `perf:`     | 性能优化      | 🎨 `Improved`      |
 | `test:`     | 增加测试      | 🔄 `Other Changes` |
 | `chore:`    | 杂项任务      | 🔄 `Other Changes` |
