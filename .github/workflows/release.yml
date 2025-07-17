@@ -68,25 +68,22 @@ jobs:
           echo "" >> release_notes.md
 
           CURRENT_TAG="v${{ env.VERSION }}"
-          echo "Current version: $CURRENT_TAG"
+          ALL_TAGS=($(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sort -V))
+          PREV_TAG=""
 
-          # 获取所有版本tag并按版本号排序，找到当前版本的前一个版本
-          ALL_TAGS=$(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sort -V)
-          echo "All version tags: $ALL_TAGS"
-          
-          # 使用sort -V进行版本号排序，找到当前版本的前一个
-          PREV_TAG=$(echo "$ALL_TAGS" | grep -B1 "^$CURRENT_TAG$" | head -n1 || echo "$ALL_TAGS" | tail -n1)
-          
-          # 如果PREV_TAG等于CURRENT_TAG，说明没有找到前一个版本，尝试其他方法
-          if [[ "$PREV_TAG" == "$CURRENT_TAG" ]]; then
-            PREV_TAG=$(echo "$ALL_TAGS" | grep -v "^$CURRENT_TAG$" | tail -n1 || true)
-          fi
+          for ((i=0; i<${#ALL_TAGS[@]}; i++)); do
+            if [[ "${ALL_TAGS[$i]}" == "$CURRENT_TAG" && $i -gt 0 ]]; then
+              PREV_TAG="${ALL_TAGS[$((i-1))]}"
+              break
+            fi
+          done
 
-          echo "Previous tag found: $PREV_TAG"
+          echo "Current tag: $CURRENT_TAG"
+          echo "Previous tag: $PREV_TAG"
 
           if [[ -n "$PREV_TAG" ]]; then
             echo "Comparing commits from $PREV_TAG to $CURRENT_TAG"
-            RANGE="$PREV_TAG..HEAD"
+            RANGE="$PREV_TAG..$CURRENT_TAG"
           else
             echo "No previous release tag found. Using all commits."
             RANGE=""
