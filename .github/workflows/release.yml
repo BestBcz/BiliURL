@@ -60,6 +60,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew clean buildPlugin -x miraiPrepareMetadata
 
+      - name: Ensure tag exists (auto create if missing)
+        run: |
+          git fetch --tags
+          CURRENT_TAG="v${{ env.VERSION }}"
+          if ! git tag | grep -q "^$CURRENT_TAG$"; then
+            echo "Tag $CURRENT_TAG not found, creating it now."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$CURRENT_TAG"
+            git push origin "$CURRENT_TAG"
+          else
+            echo "Tag $CURRENT_TAG already exists."
+          fi
+
       - name: Generate Changelog
         if: steps.check_release.outputs.should_release == 'true'
         id: changelog
