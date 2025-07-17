@@ -65,21 +65,11 @@ object BiliVideoParser : KotlinPlugin(
         GlobalScope.launch {
             while (true) {
                 try {
-                    val now = System.currentTimeMillis()
-                    val cutoff = now - 24 * 60 * 60 * 1000 // 24小时前
-
-                    val files = DOWNLOAD_DIR.listFiles()
-                    files?.forEach { file ->
-                        if (file.isFile && file.lastModified() < cutoff) {
-                            if (!file.delete()) {
-                                logger.warning("无法删除旧文件: ${file.name}")
-                            }
-                        }
-                    }
+                    cleanupOldFiles()
+                    logger.info("定时清理已执行")
                 } catch (e: Exception) {
                     logger.error("定时清理任务异常: ${e.message}")
                 }
-
                 delay(24 * 60 * 60 * 1000) // 每24小时执行一次
             }
         }
