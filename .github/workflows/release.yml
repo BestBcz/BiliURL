@@ -67,26 +67,33 @@ jobs:
           echo "## Changelog" > release_notes.md
           echo "" >> release_notes.md
 
+          git fetch --tags
+
           CURRENT_TAG="v${{ env.VERSION }}"
           ALL_TAGS=($(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sort -V))
-          PREV_TAG=""
 
+          # Find index of CURRENT_TAG
+          CUR_INDEX=-1
           for ((i=0; i<${#ALL_TAGS[@]}; i++)); do
-            if [[ "${ALL_TAGS[$i]}" == "$CURRENT_TAG" && $i -gt 0 ]]; then
-              PREV_TAG="${ALL_TAGS[$((i-1))]}"
+            if [[ "${ALL_TAGS[$i]}" == "$CURRENT_TAG" ]]; then
+              CUR_INDEX=$i
               break
             fi
           done
 
-          echo "Current tag: $CURRENT_TAG"
-          echo "Previous tag: $PREV_TAG"
+          if [[ $CUR_INDEX -eq -1 ]]; then
+            echo "Current tag $CURRENT_TAG not found in tag list: ${ALL_TAGS[*]}"
+            exit 1
+          fi
 
-          if [[ -n "$PREV_TAG" ]]; then
-            echo "Comparing commits from $PREV_TAG to $CURRENT_TAG"
-            RANGE="$PREV_TAG..$CURRENT_TAG"
-          else
-            echo "No previous release tag found. Using all commits."
+          if [[ $CUR_INDEX -eq 0 ]]; then
+            # First tag, show all commits up to this tag
             RANGE=""
+            echo "No previous tag found, using all commits up to $CURRENT_TAG"
+          else
+            PREV_TAG="${ALL_TAGS[$((CUR_INDEX-1))]}"
+            RANGE="$PREV_TAG..$CURRENT_TAG"
+            echo "Previous tag: $PREV_TAG"
           fi
 
           COMMITS=$(git log --pretty=format:"%s (%an)" $RANGE | grep -v 'dependabot')
