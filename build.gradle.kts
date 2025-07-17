@@ -4,6 +4,7 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1" // 最新版本
 }
 
+
 group = "com.bcz"
 version = "1.1.12"
 
