@@ -39,6 +39,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("是否在下载前询问用户-默认false")
     var askBeforeDownload: Boolean by value(false)
 
+    @ValueDescription("B站API请求用cookie（如SESSDATA=xxx;，可选，留空则不带登录态）")
+    var biliCookie: String by value("")
+
     /**
      * 群组权限判断逻辑
      * 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启

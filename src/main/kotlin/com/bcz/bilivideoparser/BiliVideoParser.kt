@@ -22,6 +22,8 @@ import java.net.URL
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import com.bcz.bilivideoparser.BiliDynamicParser
+import com.google.gson.JsonParser
 
 
 object BiliVideoParser : KotlinPlugin(
@@ -499,10 +501,61 @@ object BiliVideoParser : KotlinPlugin(
             val rawText = message.content
             val miraiCode = message.serializeToMiraiCode()
 
+            // 优先处理mirai:app消息中的动态分享
             if (miraiCode.startsWith("[mirai:app")) {
-                // 处理小程序
+                val content = message.content
+                try {
+                    val jsonStart = content.indexOf('{')
+                    if (jsonStart != -1) {
+                        val jsonStr = content.substring(jsonStart)
+                        val json = JsonParser.parseString(jsonStr).asJsonObject
+                        // 处理QQ分享卡片
+                        if (json.has("meta") && json["meta"].asJsonObject.has("news")) {
+                            val news = json["meta"].asJsonObject["news"].asJsonObject
+                            val jumpUrl = news["jumpUrl"]?.asString ?: ""
+                            val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(jumpUrl)
+                            if (dynamicId != null) {
+                                val result = BiliDynamicParser.parseDynamic(jumpUrl)
+                                if (result != null) {
+                                    val sb = StringBuilder()
+                                    sb.appendLine("【B站动态】")
+                                    sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
+                                    sb.appendLine("内容: ${result.content}")
+                                    if (result.pictures.isNotEmpty()) {
+                                        sb.appendLine("图片:")
+                                        result.pictures.forEach { sb.appendLine(it) }
+                                    }
+                                    group.sendMessage(sb.toString())
+                                } else {
+                                    group.sendMessage("❌ 解析动态失败或动态不存在")
+                                }
+                                return@subscribeAlways
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+                // 其他小程序处理...
                 handleMiniAppMessage()
             } else {
+                // 检查文本消息中的动态链接（支持t.bilibili.com、opus、b23.tv等）
+                val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(rawText)
+                if (dynamicId != null) {
+                    val result = BiliDynamicParser.parseDynamic(rawText)
+                    if (result != null) {
+                        val sb = StringBuilder()
+                        sb.appendLine("【B站动态】")
+                        sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
+                        sb.appendLine("内容: ${result.content}")
+                        if (result.pictures.isNotEmpty()) {
+                            sb.appendLine("图片:")
+                            result.pictures.forEach { sb.appendLine(it) }
+                        }
+                        group.sendMessage(sb.toString())
+                    } else {
+                        group.sendMessage("❌ 解析动态失败或动态不存在")
+                    }
+                    return@subscribeAlways
+                }
                 // 检查短链接和长链接
                 val b23Regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+""")
                 val biliLongRegex = Regex("""https?://(www\.)?bilibili\.com/video/(BV[0-9A-Za-z]+)""")
