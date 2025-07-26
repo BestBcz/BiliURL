@@ -34,11 +34,6 @@ object BiliDynamicParser {
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
             connection.setRequestProperty("Referer", "https://www.bilibili.com/")
             connection.setRequestProperty("Origin", "https://www.bilibili.com")
-            // 支持Config.biliCookie
-            val cookie = try { Config.biliCookie } catch (_: Exception) { "" }
-            if (!cookie.isNullOrBlank()) {
-                connection.setRequestProperty("Cookie", cookie)
-            }
             val reader = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
             val response = reader.readText()
             reader.close()
