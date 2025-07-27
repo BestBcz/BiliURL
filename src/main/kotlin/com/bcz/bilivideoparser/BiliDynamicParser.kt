@@ -1,15 +1,16 @@
 package com.bcz.bilivideoparser
 
 import com.google.gson.Gson
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import net.mamoe.mirai.contact.Group
+import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * B站动态解析工具
- * 支持解析 https://t.bilibili.com/xxxxxxx、https://www.bilibili.com/opus/xxxxxxx、b23.tv短链
- */
+
 object BiliDynamicParser {
     data class BiliDynamicResult(
         val dynamicId: String,
@@ -20,9 +21,9 @@ object BiliDynamicParser {
         val timestamp: Long
     )
 
-    /**
-     * 统一入口：支持t.bilibili.com、bilibili.com/opus、b23.tv短链
-     */
+    
+    //统一入口：支持t.bilibili.com、bilibili.com/opus、b23.tv短链
+    
     fun parseDynamic(url: String): BiliDynamicResult? {
         val dynamicId = extractDynamicIdFromAnyUrl(url) ?: return null
         val apiUrl = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail?dynamic_id=$dynamicId"
@@ -34,7 +35,7 @@ object BiliDynamicParser {
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
             connection.setRequestProperty("Referer", "https://www.bilibili.com/")
             connection.setRequestProperty("Origin", "https://www.bilibili.com")
-            val reader = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
+            val reader = connection.inputStream.bufferedReader(Charsets.UTF_8)
             val response = reader.readText()
             reader.close()
             println("[BiliDynamicParser] 请求: $apiUrl")
@@ -77,9 +78,8 @@ object BiliDynamicParser {
         }
     }
 
-    /**
-     * 支持 t.bilibili.com/xxx、www.bilibili.com/opus/xxx、b23.tv/xxx 跳转
-     */
+    // 支持 t.bilibili.com/xxx、www.bilibili.com/opus/xxx、b23.tv/xxx 跳转
+    
     fun extractDynamicIdFromAnyUrl(url: String): String? {
         // 1. 处理b23.tv短链跳转
         if (url.contains("b23.tv/")) {
@@ -98,5 +98,72 @@ object BiliDynamicParser {
         // 3. www.bilibili.com/opus/xxx
         Regex("""bilibili\.com/opus/(\d+)""").find(url)?.groupValues?.get(1)?.let { return it }
         return null
+    }
+
+    //发送动态消息到群聊
+    
+    suspend fun sendDynamicMessage(group: Group, result: BiliDynamicResult) {
+        val sb = StringBuilder()
+        sb.appendLine("【B站动态】")
+        sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
+        sb.appendLine("内容: ${result.content}")
+
+        // 先发送文字消息
+        group.sendMessage(sb.toString())
+
+        // 然后发送所有图片
+        if (result.pictures.isNotEmpty()) {
+            for (picUrl in result.pictures) {
+                try {
+                    val imageFile = downloadThumbnail(picUrl)
+                    if (imageFile != null) {
+                        val imageResource = imageFile.toExternalResource("jpg")
+                        try {
+                            val imageMessage = group.uploadImage(imageResource)
+                            group.sendMessage(imageMessage)
+                        } finally {
+                            withContext(Dispatchers.IO) {
+                                imageResource.close()
+                            }
+                            withContext(Dispatchers.IO) {
+                                delay(1000)
+                                imageFile.delete()
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 使用logger记录错误，但不在群聊中显示
+                    println("动态图片发送失败: ${e.message}")
+                }
+            }
+        }
+    }
+
+    //下载缩略图
+    
+    private suspend fun downloadThumbnail(url: String): File? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                connection.setRequestProperty("Referer", "https://www.bilibili.com/")
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val tempFile = File.createTempFile("bili_dynamic_", ".jpg")
+                    connection.inputStream.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    tempFile
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 } 

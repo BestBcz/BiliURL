@@ -517,15 +517,7 @@ object BiliVideoParser : KotlinPlugin(
                             if (dynamicId != null) {
                                 val result = BiliDynamicParser.parseDynamic(jumpUrl)
                                 if (result != null) {
-                                    val sb = StringBuilder()
-                                    sb.appendLine("【B站动态】")
-                                    sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
-                                    sb.appendLine("内容: ${result.content}")
-                                    if (result.pictures.isNotEmpty()) {
-                                        sb.appendLine("图片:")
-                                        result.pictures.forEach { sb.appendLine(it) }
-                                    }
-                                    group.sendMessage(sb.toString())
+                                    BiliDynamicParser.sendDynamicMessage(group, result)
                                 } else {
                                     group.sendMessage("❌ 解析动态失败或动态不存在")
                                 }
@@ -542,15 +534,7 @@ object BiliVideoParser : KotlinPlugin(
                 if (dynamicId != null) {
                     val result = BiliDynamicParser.parseDynamic(rawText)
                     if (result != null) {
-                        val sb = StringBuilder()
-                        sb.appendLine("【B站动态】")
-                        sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
-                        sb.appendLine("内容: ${result.content}")
-                        if (result.pictures.isNotEmpty()) {
-                            sb.appendLine("图片:")
-                            result.pictures.forEach { sb.appendLine(it) }
-                        }
-                        group.sendMessage(sb.toString())
+                        BiliDynamicParser.sendDynamicMessage(group, result)
                     } else {
                         group.sendMessage("❌ 解析动态失败或动态不存在")
                     }
