@@ -9,12 +9,6 @@ import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlinx.serialization.json.*
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-
 
 object BiliDynamicParser {
     data class BiliDynamicResult(
@@ -26,242 +20,375 @@ object BiliDynamicParser {
         val timestamp: Long
     )
 
-    
-    //统一入口：支持t.bilibili.com、bilibili.com/opus、b23.tv短链
-
-    fun parseDynamic(url: String): BiliDynamicResult? {
+    fun parseDynamic(url: String, qqAppMessage: String? = null): BiliDynamicResult? {
         val dynamicId = extractDynamicIdFromAnyUrl(url) ?: return null
-        val apiUrl = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail?dynamic_id=$dynamicId"
-
-        try {
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-            connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-            val reader = connection.inputStream.bufferedReader(Charsets.UTF_8)
-            val response = reader.readText()
-            reader.close()
-
-            println("[BiliDynamicParser] 请求: $apiUrl")
-            println("[BiliDynamicParser] 返回: $response")
-
-            val json = Gson().fromJson(response, Map::class.java)
-            val data = json["data"] as? Map<*, *> ?: return null
-            val card = data["card"] as? Map<*, *>
-            val cardStr = card?.get("card") as? String ?: return null
-            val cardObj = Gson().fromJson(cardStr, Map::class.java)
-
-            val item = cardObj["item"] as? Map<*, *>
-            val user = cardObj["user"] as? Map<*, *>
-            val uid = user?.get("uid")?.toString() ?: ""
-            val userName = user?.get("name") as? String ?: ""
-            val description = item?.get("description") as? String ?: ""
-
-            // 旧 API 标题
-            val oldTitle = item?.get("title") as? String
-            var content: String? = if (!oldTitle.isNullOrBlank()) {
-                "$oldTitle\n$description"
-            } else {
-                description
+        
+        // 从QQ小程序消息中提取标题（如果可用）
+        var qqTitle = ""
+        if (!qqAppMessage.isNullOrBlank()) {
+            try {
+                val qqJson = Gson().fromJson(qqAppMessage, Map::class.java)
+                val meta = qqJson["meta"] as? Map<*, *>
+                val news = meta?.get("news") as? Map<*, *>
+                qqTitle = news?.get("title") as? String ?: ""
+            } catch (_: Exception) {
+                // 忽略JSON解析错误
             }
-
-            val pictures = mutableListOf<String>()
-            val picturesList = item?.get("pictures") as? List<*>
-            picturesList?.forEach { pic ->
-                val urlPic = (pic as? Map<*, *>)?.get("img_src") as? String
-                if (urlPic != null) pictures.add(urlPic)
-            }
-
-            val timestamp = (item?.get("upload_time") as? Double)?.toLong() ?: 0L
-
-            // 缺标题 → 新 API 尝试
-            if (oldTitle.isNullOrBlank()) {
-                val newContent = tryParseFromNewApi(dynamicId)
-                if (!newContent.isNullOrBlank()) {
-                    content = newContent
+        }
+        
+        // 尝试多个API接口 - 根据成功插件的实现
+        val apis = listOf(
+            "https://api.bilibili.com/x/dynamic/feed/detail",
+            "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail",
+            "https://api.bilibili.com/x/dynamic/opus/view"  // 新增：专门用于opus动态的API
+        )
+        
+        for (apiUrl in apis) {
+            try {
+                val fullUrl = if (apiUrl.contains("feed/detail")) {
+                    "$apiUrl?id=$dynamicId&features=itemOpusStyle"
+                } else if (apiUrl.contains("opus/view")) {
+                    "$apiUrl?id=$dynamicId"  // opus API使用id参数
+                } else {
+                    "$apiUrl?dynamic_id=$dynamicId"
                 }
-            }
+                
+                val connection = URL(fullUrl).openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                connection.setRequestProperty("Referer", "https://www.bilibili.com/")
+                connection.setRequestProperty("Origin", "https://www.bilibili.com")
+                
+                // 读取配置中的 Cookie
+                val cookie = try { Config.bilibiliCookie } catch (_: Exception) { "" }
+                if (!cookie.isNullOrBlank()) {
+                    connection.setRequestProperty("Cookie", cookie)
+                }
+                
+                // 检查响应码
+                val responseCode = connection.responseCode
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    println("[BiliDynamicParser] API $apiUrl 返回错误码: $responseCode")
+                    continue
+                }
+                
+                val reader = connection.inputStream.bufferedReader(Charsets.UTF_8)
+                val response = reader.readText()
+                reader.close()
 
-            // 旧 API、新 API 都没标题 → HTML 兜底
-            if (content.isNullOrBlank() || !content.contains("\n")) {
-                val htmlTitle = fetchTitleFromHtml(dynamicId)
-                if (!htmlTitle.isNullOrBlank() && (content == null || !content.startsWith(htmlTitle))) {
-                    content = if (content.isNullOrBlank()) {
-                        htmlTitle
+                println("[BiliDynamicParser] 请求: $fullUrl")
+                println("[BiliDynamicParser] 返回: $response")
+
+                val json = Gson().fromJson(response, Map::class.java)
+                val data = json["data"] as? Map<*, *> ?: continue
+                
+                // 尝试解析新API格式
+                if (apiUrl.contains("feed/detail")) {
+                    val item = data["item"] as? Map<*, *> ?: continue
+                    val modules = item["modules"] as? Map<*, *> ?: continue
+                    val moduleAuthor = modules["module_author"] as? Map<*, *> ?: continue
+                    val moduleDynamic = modules["module_dynamic"] as? Map<*, *> ?: continue
+                    
+                    // 获取用户信息
+                    val userName = moduleAuthor["name"] as? String ?: ""
+                    val uid = moduleAuthor["mid"]?.toString() ?: ""
+                    val timestamp = (item["time"] as? Double)?.toLong() ?: 0L
+                    
+                    // 严格按照成功插件的逻辑获取内容
+                    val content = when (item["type"]) {
+                        2 -> { // DYNAMIC_TYPE_DRAW 图文动态
+                            val major = moduleDynamic["major"] as? Map<*, *>
+                            val opus = major?.get("opus") as? Map<*, *>
+                            val title = opus?.get("title") as? String ?: ""
+                            val summary = (opus?.get("summary") as? Map<*, *>)?.get("text") as? String ?: ""
+                            
+                            if (!title.isNullOrBlank()) {
+                                "$title\n$summary"
+                            } else {
+                                moduleDynamic["desc"]?.let { (it as? Map<*, *>)?.get("text") as? String } ?: ""
+                            }
+                        }
+                        64 -> { // DYNAMIC_TYPE_OPUS 新版图文动态（opus）
+                            val major = moduleDynamic["major"] as? Map<*, *>
+                            val opus = major?.get("opus") as? Map<*, *>
+                            
+                            // 严格按照成功插件的逻辑：优先使用opus.title，其次使用opus.summary.text
+                            val title = opus?.get("title") as? String ?: ""
+                            val summary = (opus?.get("summary") as? Map<*, *>)?.get("text") as? String ?: ""
+                            
+                            if (!title.isNullOrBlank()) {
+                                if (!summary.isNullOrBlank()) {
+                                    "$title\n$summary"
+                                } else {
+                                    title
+                                }
+                            } else {
+                                summary ?: moduleDynamic["desc"]?.let { (it as? Map<*, *>)?.get("text") as? String } ?: ""
+                            }
+                        }
+                        8 -> { // DYNAMIC_TYPE_WORD 文字动态
+                            moduleDynamic["desc"]?.let { (it as? Map<*, *>)?.get("text") as? String } ?: ""
+                        }
+                        else -> { // 其他类型
+                            moduleDynamic["desc"]?.let { (it as? Map<*, *>)?.get("text") as? String } ?: ""
+                        }
+                    }
+                    
+                    // 获取图片列表 - 严格按照成功插件的逻辑
+                    val pictures = mutableListOf<String>()
+                    val major = moduleDynamic["major"] as? Map<*, *>
+                    
+                    when (item["type"]) {
+                        2 -> { // 图文动态
+                            val draw = major?.get("draw") as? Map<*, *>
+                            val items = draw?.get("items") as? List<*>
+                            items?.forEach { picItem ->
+                                val src = (picItem as? Map<*, *>)?.get("src") as? String
+                                if (src != null) pictures.add(src)
+                            }
+                        }
+                        64 -> { // 新版图文动态（opus）- 严格按照成功插件的逻辑
+                            val opus = major?.get("opus") as? Map<*, *>
+                            val picturesList = opus?.get("pics") as? List<*>
+                            
+                            // 从opus.pics获取图片 - 根据成功插件的Dynamic.kt定义
+                            picturesList?.forEach { pic ->
+                                val picItem = pic as? Map<*, *>
+                                val src = picItem?.get("src") as? String
+                                if (src != null) pictures.add(src)
+                            }
+                            
+                            // 如果没有pics，尝试从draw获取（兼容性）
+                            if (pictures.isEmpty()) {
+                                val draw = major?.get("draw") as? Map<*, *>
+                                val items = draw?.get("items") as? List<*>
+                                items?.forEach { picItem ->
+                                    val src = (picItem as? Map<*, *>)?.get("src") as? String
+                                    if (src != null) pictures.add(src)
+                                }
+                            }
+                        }
+                        8 -> { // 文字动态
+                            // 不处理图片
+                        }
+                        else -> { // 其他类型
+                            // 根据具体类型处理
+                        }
+                    }
+
+                    return BiliDynamicResult(
+                        dynamicId = dynamicId,
+                        uid = uid,
+                        userName = userName,
+                        content = content,
+                        pictures = pictures,
+                        timestamp = timestamp
+                    )
+                } else if (apiUrl.contains("opus/view")) {
+                    // 专门解析opus API的响应
+                    val opusData = data["opus"] as? Map<*, *> ?: continue
+                    val userInfo = data["user"] as? Map<*, *> ?: continue
+                    
+                    // 获取用户信息
+                    val userName = userInfo["name"] as? String ?: ""
+                    val uid = userInfo["uid"]?.toString() ?: ""
+                    val timestamp = (opusData["ctime"] as? Double)?.toLong() ?: 0L
+                    
+                    // 获取opus内容
+                    val title = opusData["title"] as? String ?: ""
+                    val summary = opusData["summary"] as? String ?: ""
+                    
+                    val content = if (!title.isNullOrBlank()) {
+                        if (!summary.isNullOrBlank()) {
+                            "$title\n$summary"
+                        } else {
+                            title
+                        }
                     } else {
-                        htmlTitle + "\n" + content
+                        summary ?: ""
                     }
-                }
-            }
-
-            return BiliDynamicResult(
-                dynamicId = dynamicId,
-                uid = uid,
-                userName = userName,
-                content = content ?: "",
-                pictures = pictures,
-                timestamp = timestamp
-            )
-
-        } catch (e: Exception) {
-            println("[BiliDynamicParser] 异常: ${e.message}")
-            e.printStackTrace()
-            return null
-        }
-    }
-
-
-    private fun fetchTitleFromHtml(opusId: String): String? {
-        val url = "https://www.bilibili.com/opus/$opusId"
-        return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            if (Config.bilibiliCookie.isNotBlank()) {
-                conn.setRequestProperty("Cookie", Config.bilibiliCookie)
-            }
-            val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-
-            // 用正则匹配 og:title
-            val match = Regex("<meta\\s+property=\"og:title\"\\s+content=\"(.*?)\"").find(html)
-            match?.groupValues?.getOrNull(1)?.trim()
-        } catch (e: Exception) {
-            println("[BiliDynamicParser] HTML 获取标题失败: ${e.message}")
-            null
-        }
-    }
-
-
-
-    private fun fetchOpusTitle(opusId: String): String? {
-        val url = "https://api.bilibili.com/x/dynamic/opus/view?opus_id=$opusId"
-        return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            if (Config.bilibiliCookie.isNotBlank()) {
-                conn.setRequestProperty("Cookie", Config.bilibiliCookie)
-            }
-            val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val json = Gson().fromJson(text, Map::class.java)
-            val data = json["data"] as? Map<*, *>
-            val item = data?.get("item") as? Map<*, *>
-            return item?.get("title") as? String
-        } catch (e: Exception) {
-            println("[BiliDynamicParser] 获取 opus 标题失败: ${e.message}")
-            null
-        }
-    }
-
-
-
-    // —— 1) 兜底：通过 opus/view 拿标题（支持带 Cookie）——
-    fun getOpusTitle(opusId: String, cookie: String? = null): String? {
-        val url = "https://api.bilibili.com/x/dynamic/opus/view?opus_id=$opusId"
-        return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
-            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                val root = Json.parseToJsonElement(reader.readText()).jsonObject
-                val code = root["code"]?.jsonPrimitive?.int ?: -1
-                if (code == 0) {
-                    root["data"]?.jsonObject
-                        ?.get("item")?.jsonObject
-                        ?.get("title")?.jsonPrimitive?.contentOrNull
-                } else null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-
-    //新版动态api尝试获取标题（旧api无法获取）
-    // —— 2) 新接口优先，必要时再兜底到 opus/view ——
-// 返回 "title\nsummary" 或仅 summary；都没有则返回 null
-    fun tryParseFromNewApi(dynamicId: String): String? {
-        val newApiUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id=$dynamicId"
-        return try {
-            val conn = URL(newApiUrl).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            conn.setRequestProperty("Referer", "https://www.bilibili.com/")
-            val cookie = Config.bilibiliCookie
-            if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
-
-            val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            println("[BiliDynamicParser] 新 API 请求: $newApiUrl")
-            println("[BiliDynamicParser] 新 API 返回: $response")
-
-            @Suppress("UNCHECKED_CAST")
-            val root = Gson().fromJson(response, Map::class.java) as Map<String, Any?>
-            val code = (root["code"] as? Number)?.toInt() ?: 0
-            if (code == -352) {
-                // 鉴权风控，直接走兜底
-                return getOpusTitle(dynamicId, cookie)
-            }
-
-            val data = root["data"] as? Map<*, *> ?: return null
-            val item = data["item"] as? Map<*, *> ?: return null
-            val modules = item["modules"] as? Map<*, *> ?: return null
-            val moduleDynamic = modules["module_dynamic"] as? Map<*, *> ?: return null
-            val major = moduleDynamic["major"] as? Map<*, *>
-
-            var title: String? = null
-            var summary: String? = null
-
-            if (major != null) {
-                if (major.containsKey("opus")) {
-                    val opus = major["opus"] as? Map<*, *>
-                    title = opus?.get("title") as? String
-                    summary = opus?.get("summary") as? String
-                } else if (major.containsKey("draw")) {
-                    val draw = major["draw"] as? Map<*, *>
-                    title = draw?.get("title") as? String // 很多时候没有
-
-                    // 没有 summary 就用 desc.text
-                    val desc = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
-                    summary = summary ?: desc
-
-                    // ✅ 新增：无论如何都尝试用 opus/view 接口补标题
-                    val opusTitle = fetchOpusTitle(dynamicId)
-                    if (!opusTitle.isNullOrBlank()) {
-                        title = opusTitle
+                    
+                    // 获取图片列表
+                    val pictures = mutableListOf<String>()
+                    val pics = opusData["pics"] as? List<*>
+                    pics?.forEach { pic ->
+                        val picItem = pic as? Map<*, *>
+                        val src = picItem?.get("src") as? String
+                        if (src != null) pictures.add(src)
                     }
+                    
+                    return BiliDynamicResult(
+                        dynamicId = dynamicId,
+                        uid = uid,
+                        userName = userName,
+                        content = content,
+                        pictures = pictures,
+                        timestamp = timestamp
+                    )
+                } else {
+                    // 尝试解析旧API格式
+                    val card = data["card"] as? Map<*, *> ?: continue
+                    val cardStr = card["card"] as? String ?: continue
+                    val cardObj = Gson().fromJson(cardStr, Map::class.java)
+                    
+                    val item = cardObj["item"] as? Map<*, *> ?: continue
+                    val user = cardObj["user"] as? Map<*, *> ?: continue
+                    val uid = user["uid"]?.toString() ?: ""
+                    val userName = user["name"] as? String ?: ""
+                    val description = item["description"] as? String ?: ""
+                    
+                    // 尝试从多个字段获取标题信息
+                    var title = ""
+                    var content = ""
+                    
+                    // 1. 尝试从item.title获取
+                    title = item["title"] as? String ?: ""
+                    
+                    // 2. 尝试从item.text获取（某些动态可能有这个字段）
+                    if (title.isBlank()) {
+                        title = item["text"] as? String ?: ""
+                    }
+                    
+                    // 3. 尝试从item.content获取
+                    if (title.isBlank()) {
+                        title = item["content"] as? String ?: ""
+                    }
+                    
+                    // 4. 尝试从extend_json中提取更多信息
+                    if (title.isBlank()) {
+                        val extendJson = card["extend_json"] as? String
+                        if (!extendJson.isNullOrBlank()) {
+                            try {
+                                val extendObj = Gson().fromJson(extendJson, Map::class.java)
+                                // 尝试从extend_json中获取标题相关信息
+                                title = extendObj["title"] as? String ?: ""
+                                if (title.isBlank()) {
+                                    title = extendObj["text"] as? String ?: ""
+                                }
+                            } catch (_: Exception) {
+                                // 忽略JSON解析错误
+                            }
+                        }
+                    }
+                    
+                    // 5. 尝试从QQ小程序的meta信息中获取标题（如果是从mirai:app来的）
+                    if (title.isBlank()) {
+                        // 使用从QQ小程序消息中提取的标题
+                        title = qqTitle
+                    }
+                    
+                    // 6. 尝试从B站API的其他字段中提取标题
+                    if (title.isBlank()) {
+                        // 尝试从item的其他可能字段获取
+                        title = item["name"] as? String ?: ""
+                        if (title.isBlank()) {
+                            title = item["subtitle"] as? String ?: ""
+                        }
+                        if (title.isBlank()) {
+                            title = item["headline"] as? String ?: ""
+                        }
+                    }
+                    
+                    // 7. 智能分析description，提取可能的标题
+                    if (title.isBlank() && !description.isBlank()) {
+                        // 分析description，寻找可能的标题模式
+                        val lines = description.split("\n")
+                        if (lines.isNotEmpty()) {
+                            val firstLine = lines[0].trim()
+                            
+                            // 判断第一行是否像标题（长度适中，不以标点符号结尾）
+                            if (firstLine.length in 5..100 && 
+                                !firstLine.endsWith("。") && 
+                                !firstLine.endsWith("！") && 
+                                !firstLine.endsWith("？") &&
+                                !firstLine.endsWith(".") &&
+                                !firstLine.endsWith("!") &&
+                                !firstLine.endsWith("?")) {
+                                
+                                title = firstLine
+                                // 剩余内容作为描述
+                                if (lines.size > 1) {
+                                    content = lines.drop(1).joinToString("\n").trim()
+                                }
+                            } else {
+                                // 如果第一行不像标题，尝试从整个描述中提取关键词
+                                val words = description.split("，", "。", "！", "？", ",", ".", "!", "?")
+                                for (word in words) {
+                                    val trimmed = word.trim()
+                                    if (trimmed.length in 5..50 && 
+                                        !trimmed.contains("http") && 
+                                        !trimmed.contains("www") &&
+                                        !trimmed.contains("@") &&
+                                        !trimmed.contains("#")) {
+                                        title = trimmed
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 8. 如果都没有标题，尝试从description中提取第一行作为标题
+                    if (title.isBlank() && !description.isBlank()) {
+                        val lines = description.split("\n")
+                        if (lines.isNotEmpty()) {
+                            title = lines[0].trim()
+                            // 如果第一行太长，截取前50个字符
+                            if (title.length > 50) {
+                                title = title.substring(0, 50) + "..."
+                            }
+                            // 剩余内容作为描述
+                            if (lines.size > 1) {
+                                content = lines.drop(1).joinToString("\n").trim()
+                            }
+                        }
+                    }
+                    
+                    // 最终内容组合
+                    val finalContent = if (title.isNotBlank()) {
+                        if (content.isNotBlank()) {
+                            "$title\n$content"
+                        } else if (description != title) {
+                            "$title\n$description"
+                        } else {
+                            title
+                        }
+                    } else {
+                        description
+                    }
+                    
+                    val pictures = mutableListOf<String>()
+                    val picturesList = item["pictures"] as? List<*>
+                    picturesList?.forEach { pic ->
+                        val urlPic = (pic as? Map<*, *>)?.get("img_src") as? String
+                        if (urlPic != null) pictures.add(urlPic)
+                    }
+                    
+                    val timestamp = (item["upload_time"] as? Double)?.toLong() ?: 0L
+                    
+                    return BiliDynamicResult(
+                        dynamicId = dynamicId,
+                        uid = uid,
+                        userName = userName,
+                        content = finalContent,
+                        pictures = pictures,
+                        timestamp = timestamp
+                    )
                 }
-            } else {
-                // 有些动态 major 直接为 null，只能用 desc.text
-                val desc = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
-                summary = summary ?: desc
+                
+            } catch (e: Exception) {
+                println("[BiliDynamicParser] API $apiUrl 异常: ${e.message}")
+                continue
             }
-
-            // 如果还是没有标题，但判断出是图文/opus，就走兜底接口补标题
-            if (title.isNullOrBlank()) {
-                // opus_id 和 dynamicId 一致时可直接复用；实际观测基本一致
-                title = getOpusTitle(dynamicId, cookie)
-            }
-            if (title.isNullOrBlank()) {
-                title = fetchTitleFromHtml(dynamicId)
-            }
-            return when {
-                !title.isNullOrBlank() -> title + "\n" + (summary ?: "")
-                !summary.isNullOrBlank() -> summary
-                else -> null
-            }
-        } catch (e: Exception) {
-            println("[BiliDynamicParser] 新 API 异常: ${e.message}")
-            null
         }
+        
+        println("[BiliDynamicParser] 所有API都失败了")
+        return null
     }
 
     // 支持 t.bilibili.com/xxx、www.bilibili.com/opus/xxx、b23.tv/xxx 跳转
-    
     fun extractDynamicIdFromAnyUrl(url: String): String? {
         // 1. 处理b23.tv短链跳转
         if (url.contains("b23.tv/")) {
@@ -283,16 +410,15 @@ object BiliDynamicParser {
     }
 
     //发送动态消息到群聊
-    
     suspend fun sendDynamicMessage(group: Group, result: BiliDynamicResult) {
         val sb = StringBuilder()
         sb.appendLine("【B站动态】")
         sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
         sb.appendLine("内容: ${result.content}")
-
+        
         // 先发送文字消息
         group.sendMessage(sb.toString())
-
+        
         // 然后发送所有图片
         if (result.pictures.isNotEmpty()) {
             for (picUrl in result.pictures) {
@@ -322,7 +448,6 @@ object BiliDynamicParser {
     }
 
     //下载缩略图
-    
     private suspend fun downloadThumbnail(url: String): File? {
         return withContext(Dispatchers.IO) {
             try {
@@ -330,7 +455,7 @@ object BiliDynamicParser {
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-
+                
                 val responseCode = connection.responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     val tempFile = File.createTempFile("bili_dynamic_", ".jpg")

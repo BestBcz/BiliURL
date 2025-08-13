@@ -515,7 +515,7 @@ object BiliVideoParser : KotlinPlugin(
                             val jumpUrl = news["jumpUrl"]?.asString ?: ""
                             val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(jumpUrl)
                             if (dynamicId != null) {
-                                val result = BiliDynamicParser.parseDynamic(jumpUrl)
+                                val result = BiliDynamicParser.parseDynamic(jumpUrl, jsonStr)
                                 if (result != null) {
                                     BiliDynamicParser.sendDynamicMessage(group, result)
                                 } else {
