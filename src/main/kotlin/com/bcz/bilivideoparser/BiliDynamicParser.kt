@@ -23,6 +23,9 @@ object BiliDynamicParser {
     fun parseDynamic(url: String, qqAppMessage: String? = null): BiliDynamicResult? {
         val dynamicId = extractDynamicIdFromAnyUrl(url) ?: return null
         
+        // 存储从HTML获取的标题
+        var htmlTitle: String? = null
+        
         // 从QQ小程序消息中提取标题（如果可用）
         var qqTitle = ""
         if (!qqAppMessage.isNullOrBlank()) {
@@ -36,11 +39,13 @@ object BiliDynamicParser {
             }
         }
         
-        // 尝试多个API接口 - 根据成功插件的实现
+        // 尝试多个API接口 - 根据bilibili-API-collect官方文档
         val apis = listOf(
-            "https://api.bilibili.com/x/dynamic/feed/detail",
-            "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail",
-            "https://api.bilibili.com/x/dynamic/opus/view"  // 新增：专门用于opus动态的API
+            "https://www.bilibili.com/opus",                   // 新增：直接获取opus页面HTML源码（最优先）
+            "https://api.bilibili.com/x/dynamic/feed/detail",  // 新版动态详情API
+            "https://api.bilibili.com/x/dynamic/detail",       // 通用动态详情API
+            "https://api.bilibili.com/x/dynamic/opus/view",    // opus动态专用API
+            "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail"  // 旧版动态API
         )
         
         for (apiUrl in apis) {
@@ -49,8 +54,12 @@ object BiliDynamicParser {
                     "$apiUrl?id=$dynamicId&features=itemOpusStyle"
                 } else if (apiUrl.contains("opus/view")) {
                     "$apiUrl?id=$dynamicId"  // opus API使用id参数
+                } else if (apiUrl.contains("x/dynamic/detail")) {
+                    "$apiUrl?dynamic_id=$dynamicId"  // 通用动态详情API
+                } else if (apiUrl.contains("www.bilibili.com/opus")) {
+                    "$apiUrl/$dynamicId"  // opus页面使用 /opus/dynamicId 格式
                 } else {
-                    "$apiUrl?dynamic_id=$dynamicId"
+                    "$apiUrl?dynamic_id=$dynamicId"  // 旧版API使用dynamic_id参数
                 }
                 
                 val connection = URL(fullUrl).openConnection() as HttpURLConnection
@@ -81,7 +90,33 @@ object BiliDynamicParser {
                 println("[BiliDynamicParser] 请求: $fullUrl")
                 println("[BiliDynamicParser] 返回: $response")
 
-                val json = Gson().fromJson(response, Map::class.java)
+                // 如果是HTML页面，直接解析HTML
+                if (apiUrl.contains("www.bilibili.com/opus")) {
+                    val opusHtml = response
+                    
+                    // 从HTML中提取标题
+                    val titleFromHtml = Regex("""<span class="opus-module-title__text">([^<]+)</span>""").find(opusHtml)?.groupValues?.get(1)
+                    
+                    // 如果成功获取到标题，继续使用其他API获取正文和图片
+                    if (!titleFromHtml.isNullOrBlank()) {
+                        // 保存标题，继续循环使用其他API获取完整信息
+                        // 这里不直接返回，而是继续尝试其他API
+                        println("[BiliDynamicParser] HTML解析成功，标题: $titleFromHtml")
+                        htmlTitle = titleFromHtml // 保存HTML标题
+                        // 继续循环，尝试其他API获取正文和图片
+                        continue
+                    }
+                    
+                    continue
+                }
+
+                // 对于API接口，尝试JSON解析
+                val json = try {
+                    Gson().fromJson(response, Map::class.java)
+                } catch (e: Exception) {
+                    println("[BiliDynamicParser] JSON解析异常: ${e.message}")
+                    continue
+                }
                 val data = json["data"] as? Map<*, *> ?: continue
                 
                 // 尝试解析新API格式
@@ -187,7 +222,7 @@ object BiliDynamicParser {
                         timestamp = timestamp
                     )
                 } else if (apiUrl.contains("opus/view")) {
-                    // 专门解析opus API的响应
+                    // 专门解析opus API的响应 - 根据HTML源码中的数据结构
                     val opusData = data["opus"] as? Map<*, *> ?: continue
                     val userInfo = data["user"] as? Map<*, *> ?: continue
                     
@@ -227,6 +262,53 @@ object BiliDynamicParser {
                         pictures = pictures,
                         timestamp = timestamp
                     )
+                } else if (apiUrl.contains("x/dynamic/detail")) {
+                    // 解析通用动态详情API的响应
+                    val dynamicData = data["dynamic"] as? Map<*, *> ?: continue
+                    val userInfo = data["user"] as? Map<*, *> ?: continue
+                    
+                    // 获取用户信息
+                    val userName = userInfo["name"] as? String ?: ""
+                    val uid = userInfo["uid"]?.toString() ?: ""
+                    val timestamp = (dynamicData["timestamp"] as? Double)?.toLong() ?: 0L
+                    
+                    // 获取动态内容
+                    val title = dynamicData["title"] as? String ?: ""
+                    val content = dynamicData["content"] as? String ?: ""
+                    val summary = dynamicData["summary"] as? String ?: ""
+                    
+                    val finalContent = if (!title.isNullOrBlank()) {
+                        if (!content.isNullOrBlank()) {
+                            "$title\n$content"
+                        } else if (!summary.isNullOrBlank()) {
+                            "$title\n$summary"
+                        } else {
+                            title
+                        }
+                    } else if (!content.isNullOrBlank()) {
+                        content
+                    } else {
+                        summary ?: ""
+                    }
+                    
+                    // 获取图片列表
+                    val pictures = mutableListOf<String>()
+                    val pics = dynamicData["pics"] as? List<*>
+                    pics?.forEach { pic ->
+                        val picItem = pic as? Map<*, *>
+                        val src = picItem?.get("src") as? String ?: picItem?.get("url") as? String
+                        if (src != null) pictures.add(src)
+                    }
+                    
+                    return BiliDynamicResult(
+                        dynamicId = dynamicId,
+                        uid = uid,
+                        userName = userName,
+                        content = finalContent,
+                        pictures = pictures,
+                        timestamp = timestamp
+                    )
+
                 } else {
                     // 尝试解析旧API格式
                     val card = data["card"] as? Map<*, *> ?: continue
@@ -346,16 +428,27 @@ object BiliDynamicParser {
                         }
                     }
                     
-                    // 最终内容组合
-                    val finalContent = if (title.isNotBlank()) {
+                    // 最终内容组合 - 优先使用HTML标题，格式化显示
+                    val finalContent = if (htmlTitle != null && htmlTitle.isNotBlank()) {
+                        // 使用HTML标题，格式化显示
                         if (content.isNotBlank()) {
-                            "$title\n$content"
-                        } else if (description != title) {
-                            "$title\n$description"
+                            "标题：$htmlTitle\n内容：$content"
+                        } else if (description != htmlTitle) {
+                            "标题：$htmlTitle\n内容：$description"
                         } else {
-                            title
+                            "标题：$htmlTitle"
+                        }
+                    } else if (title.isNotBlank()) {
+                        // 使用API提取的标题
+                        if (content.isNotBlank()) {
+                            "标题：$title\n内容：$content"
+                        } else if (description != title) {
+                            "标题：$title\n内容：$description"
+                        } else {
+                            "标题：$title"
                         }
                     } else {
+                        // 没有标题，只显示内容
                         description
                     }
                     
