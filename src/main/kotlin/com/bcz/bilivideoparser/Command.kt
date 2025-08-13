@@ -84,8 +84,25 @@ object BiliVideoParserCommand : SimpleCommand(
                 val black = Config.groupBlackList.joinToString(", ")
                 sendMessage("📃 白名单群: $white\n🚫 黑名单群: $black")
             }
+            "setcookie" -> {
+                if (value.isNullOrBlank()) {
+                    sendMessage("❌ 请输入 Cookie，例如: /bvp setcookie SESSDATA=xxx; bili_jct=xxx; DedeUserID=xxx;")
+                } else {
+                    Config.bilibiliCookie = value
+                    sendMessage("✅ 已更新 B站 Cookie")
+                }
+            }
+            "showcookie" -> {
+                val cookie = Config.bilibiliCookie
+                if (cookie.isBlank()) {
+                    sendMessage("⚠️ 当前未设置 B站 Cookie")
+                } else {
+                    sendMessage("📃 当前 Cookie: $cookie")
+                }
+            }
 
             else -> sendMessage("❌ 未知配置项：$option，请输入 /bvp 查看帮助")
+
         }
     }
 
