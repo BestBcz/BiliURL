@@ -10,6 +10,10 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 
 object BiliDynamicParser {
@@ -55,27 +59,40 @@ object BiliDynamicParser {
             val userName = user?.get("name") as? String ?: ""
             val description = item?.get("description") as? String ?: ""
 
-            // 旧接口是否含 title？
+            // 旧 API 标题
             val oldTitle = item?.get("title") as? String
-            var content = if (!oldTitle.isNullOrBlank()) "$oldTitle\n$description" else description
-
+            var content: String? = if (!oldTitle.isNullOrBlank()) {
+                "$oldTitle\n$description"
+            } else {
+                description
+            }
 
             val pictures = mutableListOf<String>()
             val picturesList = item?.get("pictures") as? List<*>
-            if (picturesList != null) {
-                for (pic in picturesList) {
-                    val url = (pic as? Map<*, *>)?.get("img_src") as? String
-                    if (url != null) pictures.add(url)
-                }
+            picturesList?.forEach { pic ->
+                val urlPic = (pic as? Map<*, *>)?.get("img_src") as? String
+                if (urlPic != null) pictures.add(urlPic)
             }
 
             val timestamp = (item?.get("upload_time") as? Double)?.toLong() ?: 0L
 
-            // 检查是否缺失标题，有需要再调用新版接口补全
-            if (oldTitle.isNullOrBlank() && description.isNotBlank()) {
+            // 缺标题 → 新 API 尝试
+            if (oldTitle.isNullOrBlank()) {
                 val newContent = tryParseFromNewApi(dynamicId)
                 if (!newContent.isNullOrBlank()) {
                     content = newContent
+                }
+            }
+
+            // 旧 API、新 API 都没标题 → HTML 兜底
+            if (content.isNullOrBlank() || !content.contains("\n")) {
+                val htmlTitle = fetchTitleFromHtml(dynamicId)
+                if (!htmlTitle.isNullOrBlank() && (content == null || !content.startsWith(htmlTitle))) {
+                    content = if (content.isNullOrBlank()) {
+                        htmlTitle
+                    } else {
+                        htmlTitle + "\n" + content
+                    }
                 }
             }
 
@@ -83,7 +100,7 @@ object BiliDynamicParser {
                 dynamicId = dynamicId,
                 uid = uid,
                 userName = userName,
-                content = content,
+                content = content ?: "",
                 pictures = pictures,
                 timestamp = timestamp
             )
@@ -95,16 +112,64 @@ object BiliDynamicParser {
         }
     }
 
+
+    private fun fetchTitleFromHtml(opusId: String): String? {
+        val url = "https://www.bilibili.com/opus/$opusId"
+        return try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+            if (Config.bilibiliCookie.isNotBlank()) {
+                conn.setRequestProperty("Cookie", Config.bilibiliCookie)
+            }
+            val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+            // 用正则匹配 og:title
+            val match = Regex("<meta\\s+property=\"og:title\"\\s+content=\"(.*?)\"").find(html)
+            match?.groupValues?.getOrNull(1)?.trim()
+        } catch (e: Exception) {
+            println("[BiliDynamicParser] HTML 获取标题失败: ${e.message}")
+            null
+        }
+    }
+
+
+
+    private fun fetchOpusTitle(opusId: String): String? {
+        val url = "https://api.bilibili.com/x/dynamic/opus/view?opus_id=$opusId"
+        return try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+            if (Config.bilibiliCookie.isNotBlank()) {
+                conn.setRequestProperty("Cookie", Config.bilibiliCookie)
+            }
+            val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val json = Gson().fromJson(text, Map::class.java)
+            val data = json["data"] as? Map<*, *>
+            val item = data?.get("item") as? Map<*, *>
+            return item?.get("title") as? String
+        } catch (e: Exception) {
+            println("[BiliDynamicParser] 获取 opus 标题失败: ${e.message}")
+            null
+        }
+    }
+
+
+
+    // —— 1) 兜底：通过 opus/view 拿标题（支持带 Cookie）——
     fun getOpusTitle(opusId: String, cookie: String? = null): String? {
         val url = "https://api.bilibili.com/x/dynamic/opus/view?opus_id=$opusId"
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
             if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
-            conn.inputStream.bufferedReader().use { reader ->
-                val json = Json.parseToJsonElement(reader.readText()).jsonObject
-                if (json["code"]?.jsonPrimitive?.int == 0) {
-                    json["data"]?.jsonObject
+            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                val root = Json.parseToJsonElement(reader.readText()).jsonObject
+                val code = root["code"]?.jsonPrimitive?.int ?: -1
+                if (code == 0) {
+                    root["data"]?.jsonObject
                         ?.get("item")?.jsonObject
                         ?.get("title")?.jsonPrimitive?.contentOrNull
                 } else null
@@ -116,6 +181,8 @@ object BiliDynamicParser {
 
 
     //新版动态api尝试获取标题（旧api无法获取）
+    // —— 2) 新接口优先，必要时再兜底到 opus/view ——
+// 返回 "title\nsummary" 或仅 summary；都没有则返回 null
     fun tryParseFromNewApi(dynamicId: String): String? {
         val newApiUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id=$dynamicId"
         return try {
@@ -125,49 +192,68 @@ object BiliDynamicParser {
             conn.readTimeout = 5000
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
             conn.setRequestProperty("Referer", "https://www.bilibili.com/")
-
             val cookie = Config.bilibiliCookie
-            if (!cookie.isNullOrBlank()) {
-                conn.setRequestProperty("Cookie", cookie)
-            }
+            if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
 
-            val reader = conn.inputStream.bufferedReader(Charsets.UTF_8)
-            val response = reader.readText()
-            reader.close()
-
+            val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             println("[BiliDynamicParser] 新 API 请求: $newApiUrl")
             println("[BiliDynamicParser] 新 API 返回: $response")
 
-            val json = Gson().fromJson(response, Map::class.java)
-            val data = json["data"] as? Map<*, *> ?: return null
+            @Suppress("UNCHECKED_CAST")
+            val root = Gson().fromJson(response, Map::class.java) as Map<String, Any?>
+            val code = (root["code"] as? Number)?.toInt() ?: 0
+            if (code == -352) {
+                // 鉴权风控，直接走兜底
+                return getOpusTitle(dynamicId, cookie)
+            }
+
+            val data = root["data"] as? Map<*, *> ?: return null
             val item = data["item"] as? Map<*, *> ?: return null
             val modules = item["modules"] as? Map<*, *> ?: return null
             val moduleDynamic = modules["module_dynamic"] as? Map<*, *> ?: return null
-            val major = moduleDynamic["major"] as? Map<*, *> ?: return null
+            val major = moduleDynamic["major"] as? Map<*, *>
 
             var title: String? = null
-            if (title.isNullOrBlank()) {
-                title = getOpusTitle(dynamicId, Config.bilibiliCookie)
-            }
-
             var summary: String? = null
 
-            when {
-                major.containsKey("opus") -> {
+            if (major != null) {
+                if (major.containsKey("opus")) {
                     val opus = major["opus"] as? Map<*, *>
                     title = opus?.get("title") as? String
                     summary = opus?.get("summary") as? String
-                }
-                major.containsKey("draw") -> {
-                    // 图文动态
+                } else if (major.containsKey("draw")) {
                     val draw = major["draw"] as? Map<*, *>
-                    title = draw?.get("title") as? String
-                    // 有些图文没有 summary，用 desc.text 替代
-                    summary = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
+                    title = draw?.get("title") as? String // 很多时候没有
+
+                    // 没有 summary 就用 desc.text
+                    val desc = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
+                    summary = summary ?: desc
+
+                    // ✅ 新增：无论如何都尝试用 opus/view 接口补标题
+                    val opusTitle = fetchOpusTitle(dynamicId)
+                    if (!opusTitle.isNullOrBlank()) {
+                        title = opusTitle
+                    }
                 }
+            } else {
+                // 有些动态 major 直接为 null，只能用 desc.text
+                val desc = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
+                summary = summary ?: desc
             }
 
-            return if (!title.isNullOrBlank()) "$title\n${summary ?: ""}" else summary
+            // 如果还是没有标题，但判断出是图文/opus，就走兜底接口补标题
+            if (title.isNullOrBlank()) {
+                // opus_id 和 dynamicId 一致时可直接复用；实际观测基本一致
+                title = getOpusTitle(dynamicId, cookie)
+            }
+            if (title.isNullOrBlank()) {
+                title = fetchTitleFromHtml(dynamicId)
+            }
+            return when {
+                !title.isNullOrBlank() -> title + "\n" + (summary ?: "")
+                !summary.isNullOrBlank() -> summary
+                else -> null
+            }
         } catch (e: Exception) {
             println("[BiliDynamicParser] 新 API 异常: ${e.message}")
             null
