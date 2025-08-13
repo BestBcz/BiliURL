@@ -9,6 +9,7 @@ import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.serialization.json.*
 
 
 object BiliDynamicParser {
@@ -58,6 +59,7 @@ object BiliDynamicParser {
             val oldTitle = item?.get("title") as? String
             var content = if (!oldTitle.isNullOrBlank()) "$oldTitle\n$description" else description
 
+
             val pictures = mutableListOf<String>()
             val picturesList = item?.get("pictures") as? List<*>
             if (picturesList != null) {
@@ -93,8 +95,28 @@ object BiliDynamicParser {
         }
     }
 
+    fun getOpusTitle(opusId: String, cookie: String? = null): String? {
+        val url = "https://api.bilibili.com/x/dynamic/opus/view?opus_id=$opusId"
+        return try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+            if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
+            conn.inputStream.bufferedReader().use { reader ->
+                val json = Json.parseToJsonElement(reader.readText()).jsonObject
+                if (json["code"]?.jsonPrimitive?.int == 0) {
+                    json["data"]?.jsonObject
+                        ?.get("item")?.jsonObject
+                        ?.get("title")?.jsonPrimitive?.contentOrNull
+                } else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+
     //新版动态api尝试获取标题（旧api无法获取）
-    private fun tryParseFromNewApi(dynamicId: String): String? {
+    fun tryParseFromNewApi(dynamicId: String): String? {
         val newApiUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id=$dynamicId"
         return try {
             val conn = URL(newApiUrl).openConnection() as HttpURLConnection
@@ -104,13 +126,10 @@ object BiliDynamicParser {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
             conn.setRequestProperty("Referer", "https://www.bilibili.com/")
 
-            // 读取配置中的 Cookie
             val cookie = Config.bilibiliCookie
-            if (cookie.isNullOrBlank()) {
-                println("[BiliDynamicParser] 未设置 Cookie，跳过新 API 解析")
-                return null
+            if (!cookie.isNullOrBlank()) {
+                conn.setRequestProperty("Cookie", cookie)
             }
-            conn.setRequestProperty("Cookie", cookie)
 
             val reader = conn.inputStream.bufferedReader(Charsets.UTF_8)
             val response = reader.readText()
@@ -125,13 +144,30 @@ object BiliDynamicParser {
             val modules = item["modules"] as? Map<*, *> ?: return null
             val moduleDynamic = modules["module_dynamic"] as? Map<*, *> ?: return null
             val major = moduleDynamic["major"] as? Map<*, *> ?: return null
-            val opus = major["opus"] as? Map<*, *> ?: return null
 
-            val title = opus["title"] as? String
-            val summary = opus["summary"] as? String
+            var title: String? = null
+            if (title.isNullOrBlank()) {
+                title = getOpusTitle(dynamicId, Config.bilibiliCookie)
+            }
 
-            return if (!title.isNullOrBlank()) "$title\n${summary ?: ""}" else summary ?: null
+            var summary: String? = null
 
+            when {
+                major.containsKey("opus") -> {
+                    val opus = major["opus"] as? Map<*, *>
+                    title = opus?.get("title") as? String
+                    summary = opus?.get("summary") as? String
+                }
+                major.containsKey("draw") -> {
+                    // 图文动态
+                    val draw = major["draw"] as? Map<*, *>
+                    title = draw?.get("title") as? String
+                    // 有些图文没有 summary，用 desc.text 替代
+                    summary = (moduleDynamic["desc"] as? Map<*, *>)?.get("text") as? String
+                }
+            }
+
+            return if (!title.isNullOrBlank()) "$title\n${summary ?: ""}" else summary
         } catch (e: Exception) {
             println("[BiliDynamicParser] 新 API 异常: ${e.message}")
             null
