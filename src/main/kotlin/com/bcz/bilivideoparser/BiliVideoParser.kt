@@ -93,6 +93,33 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
+    // 从URL中提取视频ID（支持短链和长链）
+    private fun extractVideoIdFromUrl(url: String): String? {
+        return try {
+            // 1. 先检查是否已经是长链接格式
+            val bvIdRegex = Regex("""BV[0-9A-Za-z]+""")
+            val directMatch = bvIdRegex.find(url)
+            if (directMatch != null) {
+                return directMatch.value
+            }
+            
+            // 2. 处理短链接跳转
+            if (url.contains("b23.tv/")) {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
+                connection.connect()
+                val realUrl = connection.getHeaderField("Location") ?: return null
+                val bvIdMatch = bvIdRegex.find(realUrl)
+                return bvIdMatch?.value
+            }
+            
+            null
+        } catch (e: Exception) {
+            logger.warning("提取视频ID失败: ${e.message}")
+            null
+        }
+    }
+
     data class VideoDetails(
         val title: String,
         val desc: String,
@@ -518,14 +545,26 @@ object BiliVideoParser : KotlinPlugin(
                                 val result = BiliDynamicParser.parseDynamic(jumpUrl, jsonStr)
                                 if (result != null) {
                                     BiliDynamicParser.sendDynamicMessage(group, result)
+                                    return@subscribeAlways
                                 } else {
-                                    group.sendMessage("❌ 解析动态失败或动态不存在")
+                                    // 动态解析失败，尝试解析其中的视频链接
+                                    logger.info("动态解析失败，尝试解析视频链接: $jumpUrl")
                                 }
+                            }
+                            
+                            // 如果动态解析失败或不是动态链接，尝试解析视频链接
+                            val bvIdFromJumpUrl = extractVideoIdFromUrl(jumpUrl)
+                            if (bvIdFromJumpUrl != null) {
+                                logger.info("从QQ分享卡片中检测到视频链接: $jumpUrl -> $bvIdFromJumpUrl")
+                                val videoLink = if (Config.useShortLink) jumpUrl else "https://www.bilibili.com/video/$bvIdFromJumpUrl"
+                                handleParsedBVId(group, bvIdFromJumpUrl, videoLink, sender.id)
                                 return@subscribeAlways
                             }
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    logger.warning("解析mirai:app消息异常: ${e.message}")
+                }
                 // 其他小程序处理...
                 handleMiniAppMessage()
             } else {
