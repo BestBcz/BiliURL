@@ -507,7 +507,7 @@ object BiliDynamicParser {
         val sb = StringBuilder()
         sb.appendLine("【B站动态】")
         sb.appendLine("作者: ${result.userName} (UID: ${result.uid})")
-        sb.appendLine("内容: ${result.content}")
+        sb.appendLine("${result.content}")
         
         // 先发送文字消息
         group.sendMessage(sb.toString())
