@@ -30,7 +30,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.2.3"
+        version = "1.2.4"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
@@ -528,7 +528,7 @@ object BiliVideoParser : KotlinPlugin(
             val rawText = message.content
             val miraiCode = message.serializeToMiraiCode()
 
-            // 优先处理mirai:app消息中的动态分享
+            // 优先处理mirai:app消息
             if (miraiCode.startsWith("[mirai:app")) {
                 val content = message.content
                 try {
@@ -536,37 +536,55 @@ object BiliVideoParser : KotlinPlugin(
                     if (jsonStart != -1) {
                         val jsonStr = content.substring(jsonStart)
                         val json = JsonParser.parseString(jsonStr).asJsonObject
-                        // 处理QQ分享卡片
+
+                        var bilibiliUrl: String? = null
+
+                        // 尝试解析新的分享卡片结构 (meta.news.jumpUrl)
                         if (json.has("meta") && json["meta"].asJsonObject.has("news")) {
                             val news = json["meta"].asJsonObject["news"].asJsonObject
-                            val jumpUrl = news["jumpUrl"]?.asString ?: ""
-                            val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(jumpUrl)
+                            bilibiliUrl = news["jumpUrl"]?.asString
+                        }
+                        // 如果新结构解析失败，尝试解析旧的小程序结构 (meta.detail_1.qqdocurl)
+                        else if (json.has("meta") && json["meta"].asJsonObject.has("detail_1")) {
+                            val detail = json["meta"].asJsonObject["detail_1"].asJsonObject
+                            bilibiliUrl = detail["qqdocurl"]?.asString
+                        }
+
+                        if (!bilibiliUrl.isNullOrBlank()) {
+                            // 尝试作为动态链接解析
+                            val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(bilibiliUrl)
                             if (dynamicId != null) {
-                                val result = BiliDynamicParser.parseDynamic(jumpUrl, jsonStr)
+                                val result = BiliDynamicParser.parseDynamic(bilibiliUrl, jsonStr)
                                 if (result != null) {
                                     BiliDynamicParser.sendDynamicMessage(group, result)
                                     return@subscribeAlways
                                 } else {
-                                    // 动态解析失败，尝试解析其中的视频链接
-                                    logger.info("动态解析失败，尝试解析视频链接: $jumpUrl")
+                                    logger.info("动态解析失败，尝试解析其中的视频链接: $bilibiliUrl")
                                 }
                             }
-                            
-                            // 如果动态解析失败或不是动态链接，尝试解析视频链接
-                            val bvIdFromJumpUrl = extractVideoIdFromUrl(jumpUrl)
-                            if (bvIdFromJumpUrl != null) {
-                                logger.info("从QQ分享卡片中检测到视频链接: $jumpUrl -> $bvIdFromJumpUrl")
-                                val videoLink = if (Config.useShortLink) jumpUrl else "https://www.bilibili.com/video/$bvIdFromJumpUrl"
-                                handleParsedBVId(group, bvIdFromJumpUrl, videoLink, sender.id)
+
+                            // 如果不是动态或动态解析失败，则作为视频链接解析
+                            val bvIdFromUrl = extractVideoIdFromUrl(bilibiliUrl)
+                            if (bvIdFromUrl != null) {
+                                logger.info("从QQ分享卡片中检测到链接: $bilibiliUrl -> $bvIdFromUrl")
+                                val videoLink = if (Config.useShortLink) bilibiliUrl else "https://www.bilibili.com/video/$bvIdFromUrl"
+                                handleParsedBVId(group, bvIdFromUrl, videoLink, sender.id)
                                 return@subscribeAlways
                             }
+                        } else {
+                            // 如果两种结构都解析失败，则使用旧的handleMiniAppMessage作为最后的尝试
+                            handleMiniAppMessage()
                         }
                     }
                 } catch (e: Exception) {
                     logger.warning("解析mirai:app消息异常: ${e.message}")
+                    // 即使JSON解析失败，也尝试旧的 GSON 数据类解析方式
+                    try {
+                        handleMiniAppMessage()
+                    } catch (e2: Exception) {
+                        logger.warning("备用小程序解析方案也失败了: ${e2.message}")
+                    }
                 }
-                // 其他小程序处理...
-                handleMiniAppMessage()
             } else {
                 // 检查文本消息中的动态链接（支持t.bilibili.com、opus、b23.tv等）
                 val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(rawText)
