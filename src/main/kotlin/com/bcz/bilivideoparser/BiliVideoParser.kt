@@ -30,7 +30,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.2.4"
+        version = "1.3.0"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
@@ -343,7 +343,7 @@ object BiliVideoParser : KotlinPlugin(
             }
 
             // 发送封面图（可选，失败不影响视频发送）
-            if (thumbnailFile != null) {
+            if (Config.enableThumbnail && thumbnailFile != null) {
                 try {
                     withTimeout(5000) { // 5秒超时
                         val imageMessage = group.uploadImage(thumbnailResource)

@@ -50,6 +50,7 @@ object BiliVideoParserCommand : SimpleCommand(
                 listgroups # 查看群组列表
                 sendlink # 是否发送解析后的视频链接
                 askdownload # 是否开启询问
+                thumbnail # 开关下载封面
                 """.trimIndent()
             )
             return
@@ -62,7 +63,7 @@ object BiliVideoParserCommand : SimpleCommand(
             "download" -> updateBoolConfig("enableDownload", value) { Config.enableDownload = it }
             "sendlink" -> updateBoolConfig("enableSendLink", value) { Config.enableSendLink = it }
             "askdownload" -> updateBoolConfig("askBeforeDownload", value) { Config.askBeforeDownload = it }
-
+            "thumbnail" -> updateBoolConfig("enableThumbnail", value) { Config.enableThumbnail = it }
             "addadmin" -> modifyAdmin(value, add = true)
             "removeadmin" -> modifyAdmin(value, add = false)
             "listadmins" -> {

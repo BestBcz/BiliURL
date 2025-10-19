@@ -42,6 +42,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("用于访问新版B站动态的登录Cookie，SESSDATA开头")
     var bilibiliCookie: String by value("")
 
+    @ValueDescription("是否下载并发送视频封面图")
+    var enableThumbnail: Boolean by value(true)
+
     /**
      * 群组权限判断逻辑
      * 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启
