@@ -30,7 +30,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "1.3.0"
+        version = "1.3.1"
         //https://github.com/BestBcz/BiliURL
     ) {
         author("Bcz")
@@ -165,17 +165,39 @@ object BiliVideoParser : KotlinPlugin(
         try {
             val bilibiliUrl = "https://www.bilibili.com/video/$bvId"
             logger.info("开始下载视频: $bvId")
-            
-            // 下载视频，限制文件大小小于100MB
-            val process = ProcessBuilder(
-                "yt-dlp", 
-                "-f", "bv+ba", 
+
+            // --- 动态构建命令 (使用 --add-header) ---
+            val command = mutableListOf(
+                "yt-dlp",
+                "-f", "bv+ba",
                 "-S", "+size",
                 "--merge-output-format", "mp4",
-                "--max-filesize", "100M",
-                "-o", outputFile.absolutePath,
-                bilibiliUrl
-            ).redirectErrorStream(true).start()
+                "--max-filesize", "100M"
+            )
+
+
+            command.add("--add-header")
+            command.add("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+            command.add("--add-header")
+            command.add("Referer: https://www.bilibili.com/")
+
+            val cookie = Config.bilibiliCookie
+            if (cookie.isNotBlank()) {
+                command.add("--add-header")
+                command.add("Cookie: $cookie") // <--- 关键：使用 Header 方式
+            } else {
+                logger.warning("未配置 Bilibili Cookie，下载可能会因 HTTP 412 失败")
+            }
+            // --- Header 结束 ---
+
+            command.add("-o")
+            command.add(outputFile.absolutePath)
+            command.add(bilibiliUrl)
+
+            val process = ProcessBuilder(command)
+                .redirectErrorStream(true).start()
+
 
             val output = StringBuilder()
             val reader = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8))
@@ -197,6 +219,7 @@ object BiliVideoParser : KotlinPlugin(
                 return outputFile
             } else {
                 logger.error("视频下载失败: $bvId")
+
                 return null
             }
         } catch (e: IOException) {
