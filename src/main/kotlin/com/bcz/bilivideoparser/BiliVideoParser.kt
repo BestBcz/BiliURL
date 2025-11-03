@@ -219,7 +219,8 @@ object BiliVideoParser : KotlinPlugin(
                 return outputFile
             } else {
                 logger.error("视频下载失败: $bvId")
-
+                 // yt-dlp详细输出
+                logger.error("yt-dlp 输出: \n$output")
                 return null
             }
         } catch (e: IOException) {
