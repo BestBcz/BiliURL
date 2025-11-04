@@ -51,6 +51,8 @@ object BiliVideoParserCommand : SimpleCommand(
                 sendlink # 是否发送解析后的视频链接
                 askdownload # 是否开启询问
                 thumbnail # 开关下载封面
+                setminduration # 设置最小时长(分钟)
+                setmaxduration # 设置最大时长(分钟)
                 """.trimIndent()
             )
             return
@@ -85,22 +87,9 @@ object BiliVideoParserCommand : SimpleCommand(
                 val black = Config.groupBlackList.joinToString(", ")
                 sendMessage("📃 白名单群: $white\n🚫 黑名单群: $black")
             }
-            "setcookie" -> {
-                if (value.isNullOrBlank()) {
-                    sendMessage("❌ 请输入 Cookie，例如: /bvp setcookie SESSDATA=xxx; bili_jct=xxx; DedeUserID=xxx;")
-                } else {
-                    Config.bilibiliCookie = value
-                    sendMessage("✅ 已更新 B站 Cookie")
-                }
-            }
-            "showcookie" -> {
-                val cookie = Config.bilibiliCookie
-                if (cookie.isBlank()) {
-                    sendMessage("⚠️ 当前未设置 B站 Cookie")
-                } else {
-                    sendMessage("📃 当前 Cookie: $cookie")
-                }
-            }
+            "setminduration" -> updateIntConfig("minimumDuration", value) { Config.minimumDuration = it }
+            "setmaxduration" -> updateIntConfig("maximumDuration", value) { Config.maximumDuration = it }
+
 
             else -> sendMessage("❌ 未知配置项：$option，请输入 /bvp 查看帮助")
 
@@ -115,6 +104,20 @@ object BiliVideoParserCommand : SimpleCommand(
         val boolValue = value.toBooleanStrictOrNull() ?: value.toBoolean()
         setter(boolValue)
         sendMessage("✅ 配置已更新：$name = $boolValue")
+    }
+
+    private suspend fun CommandSender.updateIntConfig(name: String, value: String?, setter: (Int) -> Unit) {
+        if (value == null) {
+            sendMessage("❌ 请提供数值，例如: /bvp $name 5")
+            return
+        }
+        val intValue = value.toIntOrNull()
+        if (intValue == null) {
+            sendMessage("❌ 无效的数值: $value")
+            return
+        }
+        setter(intValue)
+        sendMessage("✅ 配置已更新：$name = $intValue")
     }
 
     private suspend fun CommandSender.modifyAdmin(value: String?, add: Boolean) {
