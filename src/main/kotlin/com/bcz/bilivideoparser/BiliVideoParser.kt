@@ -31,7 +31,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "2.0.0"
+        version = "2.1.0"
     ) {
         author("Bcz")
     }
