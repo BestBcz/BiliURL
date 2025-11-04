@@ -39,17 +39,24 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("是否在下载前询问用户-默认false")
     var askBeforeDownload: Boolean by value(false)
 
-    @ValueDescription("用于访问新版B站动态的登录Cookie，SESSDATA开头")
-    var bilibiliCookie: String by value("")
-
     @ValueDescription("是否下载并发送视频封面图")
     var enableThumbnail: Boolean by value(true)
 
+    @ValueDescription("允许解析的视频最小时长（分钟），0为不限制")
+    var minimumDuration: Int by value(0)
+
+    @ValueDescription("允许解析的视频最大时长（分钟），0为不限制")
+    var maximumDuration: Int by value(25)
+
+    @ValueDescription("视频过短时的提示语")
+    var minDurationTip: String by value("视频太短啦！不看不看~")
+
+    @ValueDescription("视频过长时的提示语")
+    var maxDurationTip: String by value("视频太长啦！内容还是去B站看吧~")
+
+
     /**
      * 群组权限判断逻辑
-     * 1. 白名单优先：若白名单有群号，则只在白名单中的群聊开启
-     * 2. 若白名单为空，则不使用白名单，除黑名单的群都开启下载
-     * 3. 若都不填，那默认全部开启
      */
     fun isGroupAllowed(groupId: Long): Boolean {
         return when {
@@ -63,7 +70,7 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
         return qq in adminQQs
     }
 
-    private const val CURRENT_CONFIG_VERSION = 4
+    private const val CURRENT_CONFIG_VERSION = 5 // 版本号+1
 
     @OptIn(ConsoleExperimentalApi::class)
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {
