@@ -13,6 +13,7 @@ repositories {
     mavenCentral() // 加载依赖
 }
 
+
 dependencies {
     implementation(kotlin("stdlib"))
     compileOnly("net.mamoe:mirai-core:2.16.0")
