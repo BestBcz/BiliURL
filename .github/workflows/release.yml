@@ -58,7 +58,7 @@ jobs:
         if: steps.check_release.outputs.should_release == 'true'
         run: |
           chmod +x ./gradlew
-          ./gradlew clean buildPlugin -x miraiPrepareMetadata
+          ./gradlew clean buildPlugin
 
       - name: Ensure tag exists (auto create if missing)
         run: |
@@ -152,7 +152,7 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: "v${{ env.VERSION }} Release"
           body_path: release_notes.md
-          files: build/libs/*.jar
+          files: build/mirai/*.jar
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
