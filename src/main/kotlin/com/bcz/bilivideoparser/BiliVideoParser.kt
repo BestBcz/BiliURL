@@ -130,6 +130,8 @@ object BiliVideoParser : KotlinPlugin(
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            connection.setRequestProperty("Referer", "https://www.bilibili.com/")
             val reader = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
             val response = reader.readText()
             reader.close()
