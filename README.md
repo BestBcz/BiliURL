@@ -17,12 +17,13 @@
 4. Enjoy~
 
 #### 🛠️依赖前置（请安装到你搭建机器人的服务器上）
--  [FFmpeg](https://ffmpeg.org/download.html)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)
+-  [FFmpeg](https://ffmpeg.org/download.html) (v2.0.0版本后不再需要)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)  (v2.0.0版本后不再需要)
 - [Mirai-console 2.16版本或以上](https://github.com/mamoe/mirai/releases)
 > [!IMPORTANT]
-> _以上↑为下载视频功能必需依赖_
+> _v2.0.0版本后不再需要Ffmpeg和yt-dlp_
 
+#### 🛠️指令依赖↓
  - [可选Chat-Command](https://github.com/project-mirai/chat-command)
 
 ----------------------------------------
@@ -96,9 +97,4 @@ listgroups # 查看群组列表
 | askBeforeDownload  | 是否在下载前询问用户                                    | false                   | true         |
 
 -------------------------------------------
-### 编译  - 非开发者请无视
-- 如果需要使用pluginbuild 编译请使用
-```
-./gradlew clean buildPlugin -x miraiPrepareMetadata
-  ```
-- 来防止miraiPrepareMetadata造成的报错(理论上普通build也可行)
+
