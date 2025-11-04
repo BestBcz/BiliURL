@@ -5,8 +5,7 @@
 )](https://mirai.mamoe.net/topic/2795/biliurl%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E8%A7%A3%E6%9E%90qq%E5%88%86%E4%BA%AB%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9%E5%B0%8F%E7%A8%8B%E5%BA%8F%E8%A7%86%E9%A2%91%E5%9C%B0%E5%9D%80%E7%9A%84%E5%B0%8F%E6%8F%92%E4%BB%B6)
 
 -------------------------
-#### 🌱 一个智能解析B站视频链接并支持自动下载发送到QQ群的Mirai插件 
-#### 🌱A Mirai plugin that intelligently parses Bilibili video links and supports automatic downloading and sending to QQ groups
+#### 🌱 一个智能解析B站视频链接和动态链接并支持自动下载发送到QQ群的Mirai插件
 
 
 ---------------------------
@@ -17,7 +16,7 @@
 4. Enjoy~
 
 #### 🛠️依赖前置（请安装到你搭建机器人的服务器上）
--  [FFmpeg](https://ffmpeg.org/download.html) (v2.0.0版本后不再需要)
+-  [FFmpeg](https://ffmpeg.org/download.html) (v2.0.0版本后不再需要)(以后可能还是要用，暂时不需要)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)  (v2.0.0版本后不再需要)
 - [Mirai-console 2.16版本或以上](https://github.com/mamoe/mirai/releases)
 > [!IMPORTANT]
