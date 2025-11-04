@@ -54,6 +54,9 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("视频过长时的提示语")
     var maxDurationTip: String by value("视频太长啦！内容还是去B站看吧~")
 
+    @ValueDescription("视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。80(1080P)可能需要FFmpeg，建议使用 64。")
+    var videoQuality: String by value("16") // 默认 360P
+
 
     /**
      * 群组权限判断逻辑
@@ -70,7 +73,7 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
         return qq in adminQQs
     }
 
-    private const val CURRENT_CONFIG_VERSION = 5 // 版本号+1
+    private const val CURRENT_CONFIG_VERSION = 6
 
     @OptIn(ConsoleExperimentalApi::class)
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {

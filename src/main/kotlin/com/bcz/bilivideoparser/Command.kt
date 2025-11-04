@@ -53,6 +53,7 @@ object BiliVideoParserCommand : SimpleCommand(
                 thumbnail # 开关下载封面
                 setminduration # 设置最小时长(分钟)
                 setmaxduration # 设置最大时长(分钟)
+                setquality # 设置清晰度 (80, 64, 32, 16)
                 """.trimIndent()
             )
             return
@@ -90,6 +91,14 @@ object BiliVideoParserCommand : SimpleCommand(
             "setminduration" -> updateIntConfig("minimumDuration", value) { Config.minimumDuration = it }
             "setmaxduration" -> updateIntConfig("maximumDuration", value) { Config.maximumDuration = it }
 
+            "setquality" -> {
+                if (value == null || !listOf("80", "64", "32", "16").contains(value)) {
+                    sendMessage("❌ 无效的清晰度。请输入: 80, 64, 32, 或 16")
+                } else {
+                    Config.videoQuality = value
+                    sendMessage("✅ 视频清晰度已设置为: $value (1080P=80, 720P=64)")
+                }
+            }
 
             else -> sendMessage("❌ 未知配置项：$option，请输入 /bvp 查看帮助")
 
