@@ -205,12 +205,52 @@ object BiliDynamicParser {
                 } else {
                     //
                     val card = data["card"] as? Map<*, *> ?: continue
+
+                    // 1. 获取 desc 来判断类型
+                    val desc = card["desc"] as? Map<*, *> ?: continue
+                    val type = (desc["type"] as? Double)?.toInt()
+
+                    // 2. 从 desc 中获取用户信息
+                    val userProfile = desc["user_profile"] as? Map<*, *>
+                    val userInfo = userProfile?.get("info") as? Map<*, *>
+                    val uid = userInfo?.get("uid")?.toString() ?: ""
+                    val userName = userInfo?.get("uname") as? String ?: ""
+                    val timestamp = (desc["timestamp"] as? Double)?.toLong() ?: 0L
+
+                    // 3. 检查是否为 Type 8 (投稿视频)
+                    if (type == 8) {
+                        val cardStr = card["card"] as? String ?: continue
+                        val cardObj = Gson().fromJson(cardStr, Map::class.java)
+
+                        val dynamicText = cardObj["dynamic"] as? String ?: ""
+                        val videoTitle = cardObj["title"] as? String ?: ""
+                        val videoPic = cardObj["pic"] as? String ?: ""
+
+                        // 组合动态文本和视频标题
+                        val content = "$dynamicText\n\n视频投稿：$videoTitle"
+                        // 使用视频封面作为动态图片
+                        val pictures = if (videoPic.isNotBlank()) listOf(videoPic) else emptyList()
+
+                        return BiliDynamicResult(
+                            dynamicId = dynamicId,
+                            uid = uid,
+                            userName = userName,
+                            content = content,
+                            pictures = pictures,
+                            timestamp = timestamp
+                        )
+                    }
+
+                    // (保留旧逻辑) 处理其他类型的动态 (如纯文本/图片)
                     val cardStr = card["card"] as? String ?: continue
                     val cardObj = Gson().fromJson(cardStr, Map::class.java)
-                    val item = cardObj["item"] as? Map<*, *> ?: continue
+                    val item = cardObj["item"] as? Map<*, *> ?: continue // 旧逻辑依赖 "item"
+
+                    // [注意] 旧逻辑的用户信息获取方式可能不准确，但我们先保留它
                     val user = cardObj["user"] as? Map<*, *> ?: continue
-                    val uid = user["uid"]?.toString() ?: ""
-                    val userName = user["name"] as? String ?: ""
+                    val uid_legacy = user["uid"]?.toString() ?: uid
+                    val userName_legacy = user["name"] as? String ?: userName
+
                     val description = item["description"] as? String ?: ""
                     var title = ""
                     var content = ""
@@ -275,9 +315,9 @@ object BiliDynamicParser {
                         val urlPic = (pic as? Map<*, *>)?.get("img_src") as? String
                         if (urlPic != null) pictures.add(urlPic)
                     }
-                    val timestamp = (item["upload_time"] as? Double)?.toLong() ?: 0L
+                    val timestamp_legacy = (item["upload_time"] as? Double)?.toLong() ?: timestamp
 
-                    return BiliDynamicResult(dynamicId = dynamicId, uid = uid, userName = userName, content = finalContent, pictures = pictures, timestamp = timestamp)
+                    return BiliDynamicResult(dynamicId = dynamicId, uid = uid_legacy, userName = userName_legacy, content = finalContent, pictures = pictures, timestamp = timestamp_legacy)
                 }
 
             } catch (e: Exception) {
@@ -355,7 +395,7 @@ object BiliDynamicParser {
                 val responseCode = connection.responseCode
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     // 统一使用 DOWNLOAD_DIR
-                    val tempFile = File(BiliVideoParser.DOWNLOAD_DIR, "dynamic_${url.hashCode()}.jpg")
+                    val tempFile = File(BiliVideoParser.DOWNLOAD_DIR, "dynamic_${url.hashCode()}.jpg") //
                     connection.inputStream.use { input ->
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
