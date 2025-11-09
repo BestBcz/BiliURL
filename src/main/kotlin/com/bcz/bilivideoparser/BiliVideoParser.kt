@@ -19,23 +19,43 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Paths
-import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
-import com.bcz.bilivideoparser.BiliDynamicParser
 import com.google.gson.JsonParser
-import java.io.InputStream
-import java.util.logging.Level
+import java.util.concurrent.ConcurrentHashMap
+
 
 
 object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "2.1.0"
+        version = "2.2.0"
     ) {
         author("Bcz")
     }
 ) {
+
+    // 冷却缓存
+    private val parseCache = ConcurrentHashMap<String, Long>()
+
+    // 检查是否处于冷却中的函数
+    private fun isRateLimited(id: String, type: String): Boolean {
+        //  30 秒冷却
+        val cooldownMillis = 30_000L
+
+        val currentTime = System.currentTimeMillis()
+        val lastParsedTime = parseCache[id]
+
+        if (lastParsedTime != null && (currentTime - lastParsedTime) < cooldownMillis) {
+            logger.info("[$type] ID: $id 仍在 30 秒解析冷却中，已跳过。")
+            return true // 处于冷却中
+        }
+
+        // 更新时间戳并允许解析
+        parseCache[id] = currentTime
+        return false
+    }
+
 
     val DOWNLOAD_DIR = Paths.get("bilidownload").toFile().apply {
         if (!exists()) mkdirs()
@@ -339,7 +359,7 @@ object BiliVideoParser : KotlinPlugin(
     private suspend fun proceedToDownload(group: Group, bvId: String, details: VideoDetails?) {
         val tempVideoFile = File(DOWNLOAD_DIR, "downloaded_video_${bvId}_api.mp4")
         var success = false
-        var videoUrl: String? = null
+        var videoUrl: String?
 
         // --- 方案 B: 原生 API
         val cid = details?.cid
@@ -527,6 +547,9 @@ object BiliVideoParser : KotlinPlugin(
 
 
     private suspend fun handleParsedBVId(group: Group, bvId: String, videoLink: String, senderId: Long) {
+        if (isRateLimited(bvId, "Video")) {
+            return // 处于冷却中，停止执行
+        }
         val details = getVideoDetails(bvId) //
 
         var message = ""
@@ -636,6 +659,9 @@ object BiliVideoParser : KotlinPlugin(
                             // 态解析使用 BiliDynamicParser
                             val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(bilibiliUrl)
                             if (dynamicId != null) {
+                                if (isRateLimited(dynamicId, "Dynamic")) {
+                                    return@subscribeAlways
+                                }
                                 val result = BiliDynamicParser.parseDynamic(bilibiliUrl, jsonStr)
                                 if (result != null) {
                                     BiliDynamicParser.sendDynamicMessage(group, result)
@@ -667,6 +693,9 @@ object BiliVideoParser : KotlinPlugin(
             } else {
                 val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(rawText)
                 if (dynamicId != null) {
+                    if (isRateLimited(dynamicId, "Dynamic")) {
+                        return@subscribeAlways
+                    }
                     val result = BiliDynamicParser.parseDynamic(rawText)
                     if (result != null) {
                         BiliDynamicParser.sendDynamicMessage(group, result)
