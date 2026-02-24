@@ -671,6 +671,26 @@ object BiliVideoParser : KotlinPlugin(
                                 }
                             }
 
+                            val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(bilibiliUrl)
+                            if (articleId != null) {
+                                if (isRateLimited("cv$articleId", "Article")) {
+                                    return@subscribeAlways
+                                }
+                                val result = BiliArticleParser.parseArticle(bilibiliUrl, jsonStr)
+                                if (result != null) {
+                                    val sb = StringBuilder()
+                                    sb.appendLine("【B站专栏】")
+                                    sb.appendLine("作者: ${result.authorName}")
+                                    sb.appendLine("标题：${result.title}")
+                                    if (result.summary.isNotBlank()) {
+                                        sb.appendLine("内容：${result.summary}")
+                                    }
+                                    sb.appendLine(result.jumpUrl)
+                                    group.sendMessage(sb.toString().trim())
+                                    return@subscribeAlways
+                                }
+                            }
+
                             val bvIdFromUrl = extractVideoIdFromUrl(bilibiliUrl)
                             if (bvIdFromUrl != null) {
                                 logger.info("从QQ分享卡片中检测到链接: $bilibiliUrl -> $bvIdFromUrl")
@@ -701,6 +721,28 @@ object BiliVideoParser : KotlinPlugin(
                         BiliDynamicParser.sendDynamicMessage(group, result)
                     } else {
                         group.sendMessage("❌ 解析动态失败或动态不存在")
+                    }
+                    return@subscribeAlways
+                }
+
+                val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(rawText)
+                if (articleId != null) {
+                    if (isRateLimited("cv$articleId", "Article")) {
+                        return@subscribeAlways
+                    }
+                    val result = BiliArticleParser.parseArticle(rawText)
+                    if (result != null) {
+                        val sb = StringBuilder()
+                        sb.appendLine("【B站专栏】")
+                        sb.appendLine("作者: ${result.authorName}")
+                        sb.appendLine("标题：${result.title}")
+                        if (result.summary.isNotBlank()) {
+                            sb.appendLine("内容：${result.summary}")
+                        }
+                        sb.appendLine(result.jumpUrl)
+                        group.sendMessage(sb.toString().trim())
+                    } else {
+                        group.sendMessage("❌ 解析专栏失败或专栏不存在")
                     }
                     return@subscribeAlways
                 }
