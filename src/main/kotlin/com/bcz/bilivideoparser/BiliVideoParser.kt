@@ -383,7 +383,7 @@ object BiliVideoParser : KotlinPlugin(
         return false
     }
 
-    private fun sendArticleMessage(group: Group, result: BiliArticleParser.BiliArticleResult) {
+    suspend fun sendArticleMessage(group: Group, result: BiliArticleParser.BiliArticleResult) {
         val sb = StringBuilder()
         sb.appendLine("【B站专栏】")
         sb.appendLine("作者: ${result.authorName}")
