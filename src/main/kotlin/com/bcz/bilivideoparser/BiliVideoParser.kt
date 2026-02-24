@@ -339,12 +339,66 @@ object BiliVideoParser : KotlinPlugin(
             jsonData.meta.detail_1.appid == "1109937557") {
 
             val shortUrl = jsonData.meta.detail_1.qqdocurl
-            jsonData.meta.detail_1.desc ?: "哔哩哔哩"
-            val bvId = getRealBilibiliUrl(shortUrl)
-            val videoLink = if (Config.useShortLink) shortUrl else "https://www.bilibili.com/video/$bvId"
-
-            handleParsedBVId(group, bvId, videoLink, sender.id)
+            if (handleBilibiliUrl(shortUrl, message.content)) {
+                return
+            }
         }
+
+        val fallbackUrl = extractBilibiliUrlFromText(message.content)
+        if (!fallbackUrl.isNullOrBlank()) {
+            handleBilibiliUrl(fallbackUrl, message.content)
+        }
+    }
+
+    private suspend fun GroupMessageEvent.handleBilibiliUrl(url: String, qqAppJson: String? = null): Boolean {
+        val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(url)
+        if (dynamicId != null) {
+            if (isRateLimited(dynamicId, "Dynamic")) return true
+            val dynamicResult = BiliDynamicParser.parseDynamic(url, qqAppJson)
+            if (dynamicResult != null) {
+                BiliDynamicParser.sendDynamicMessage(group, dynamicResult)
+                return true
+            }
+        }
+
+        val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(url)
+        if (articleId != null) {
+            if (isRateLimited("cv$articleId", "Article")) return true
+            val articleResult = BiliArticleParser.parseArticle(url, qqAppJson)
+            if (articleResult != null) {
+                sendArticleMessage(group, articleResult)
+                return true
+            }
+            group.sendMessage("❌ 解析专栏失败或专栏不存在")
+            return true
+        }
+
+        val bvId = extractVideoIdFromUrl(url)
+        if (bvId != null) {
+            val videoLink = if (Config.useShortLink) url else "https://www.bilibili.com/video/$bvId"
+            handleParsedBVId(group, bvId, videoLink, sender.id)
+            return true
+        }
+
+        return false
+    }
+
+    private fun sendArticleMessage(group: Group, result: BiliArticleParser.BiliArticleResult) {
+        val sb = StringBuilder()
+        sb.appendLine("【B站专栏】")
+        sb.appendLine("作者: ${result.authorName}")
+        sb.appendLine("标题：${result.title}")
+        if (result.summary.isNotBlank()) {
+            sb.appendLine("内容：${result.summary}")
+        }
+        sb.appendLine(result.jumpUrl)
+        group.sendMessage(sb.toString().trim())
+    }
+
+    private fun extractBilibiliUrlFromText(text: String): String? {
+        val normalized = text.replace("\\/", "/")
+        val regex = Regex("""https?://(?:www\.)?(?:bilibili\.com|b23\.tv)/[^\s\"]+""")
+        return regex.find(normalized)?.value
     }
 
     private suspend fun GroupMessageEvent.handleLinkMessage(shortUrl: String) {
@@ -656,26 +710,7 @@ object BiliVideoParser : KotlinPlugin(
                         }
 
                         if (!bilibiliUrl.isNullOrBlank()) {
-                            // 态解析使用 BiliDynamicParser
-                            val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(bilibiliUrl)
-                            if (dynamicId != null) {
-                                if (isRateLimited(dynamicId, "Dynamic")) {
-                                    return@subscribeAlways
-                                }
-                                val result = BiliDynamicParser.parseDynamic(bilibiliUrl, jsonStr)
-                                if (result != null) {
-                                    BiliDynamicParser.sendDynamicMessage(group, result)
-                                    return@subscribeAlways
-                                } else {
-                                    logger.info("动态解析失败，尝试解析其中的视频链接: $bilibiliUrl")
-                                }
-                            }
-
-                            val bvIdFromUrl = extractVideoIdFromUrl(bilibiliUrl)
-                            if (bvIdFromUrl != null) {
-                                logger.info("从QQ分享卡片中检测到链接: $bilibiliUrl -> $bvIdFromUrl")
-                                val videoLink = if (Config.useShortLink) bilibiliUrl else "https://www.bilibili.com/video/$bvIdFromUrl"
-                                handleParsedBVId(group, bvIdFromUrl, videoLink, sender.id)
+                            if (handleBilibiliUrl(bilibiliUrl, jsonStr)) {
                                 return@subscribeAlways
                             }
                         } else {
@@ -691,17 +726,7 @@ object BiliVideoParser : KotlinPlugin(
                     }
                 }
             } else {
-                val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(rawText)
-                if (dynamicId != null) {
-                    if (isRateLimited(dynamicId, "Dynamic")) {
-                        return@subscribeAlways
-                    }
-                    val result = BiliDynamicParser.parseDynamic(rawText)
-                    if (result != null) {
-                        BiliDynamicParser.sendDynamicMessage(group, result)
-                    } else {
-                        group.sendMessage("❌ 解析动态失败或动态不存在")
-                    }
+                if (handleBilibiliUrl(rawText)) {
                     return@subscribeAlways
                 }
 
