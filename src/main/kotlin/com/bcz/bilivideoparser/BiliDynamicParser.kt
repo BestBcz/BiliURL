@@ -150,6 +150,35 @@ object BiliDynamicParser {
                         )
                     }
 
+                    // type=64 常见于旧版专栏卡片（如 opus_fallback 场景）
+                    if (type == 64) {
+                        val cardStr = card["card"] as? String ?: continue
+                        val cardObj = Gson().fromJson(cardStr, Map::class.java)
+
+                        val articleTitle = cardObj["title"] as? String ?: ""
+                        val articleSummary = cardObj["summary"] as? String ?: ""
+                        val finalContent = when {
+                            articleTitle.isNotBlank() && articleSummary.isNotBlank() -> "标题：$articleTitle\n内容：$articleSummary"
+                            articleTitle.isNotBlank() -> "标题：$articleTitle"
+                            articleSummary.isNotBlank() -> articleSummary
+                            else -> ""
+                        }
+
+                        val pictures = mutableListOf<String>()
+                        (cardObj["origin_image_urls"] as? List<*>)
+                            ?.mapNotNull { it as? String }
+                            ?.forEach { pictures.add(it) }
+
+                        return BiliDynamicResult(
+                            dynamicId = dynamicId,
+                            uid = uid,
+                            userName = userName,
+                            content = finalContent,
+                            pictures = pictures,
+                            timestamp = timestamp
+                        )
+                    }
+
                     //  处理其他类型的动态 (如纯文本/图片)
                     val cardStr = card["card"] as? String ?: continue
                     val cardObj = Gson().fromJson(cardStr, Map::class.java)
