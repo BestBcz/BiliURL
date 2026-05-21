@@ -17,8 +17,7 @@
 
 #### 🛠️依赖前置（请安装到你搭建机器人的服务器上）
 -  [FFmpeg](https://ffmpeg.org/download.html) (v2.0.0版本后不再需要)(以后可能还是要用，暂时不需要)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)  (v2.0.0版本后不再需要)
-- [Mirai-console 2.16版本或以上](https://github.com/mamoe/mirai/releases)
+- [Mirai-console 2.16版本](https://github.com/mamoe/mirai/releases) 或 [Overflow](https://github.com/MrXiaoM/Overflow/releases)
 > [!IMPORTANT]
 > _v2.0.0版本后不再需要Ffmpeg和yt-dlp_
 
@@ -27,7 +26,7 @@
 
 ----------------------------------------
 
-### 🧐已拥有的功能
+### 🧐部分功能一览
 
 - [x] 视频解析下载
 - [x] 封面图下载并单独发送
@@ -40,6 +39,12 @@
 - [x] 设置管理员
 - [x] 群组黑白名单控制
 - [x] 下载前询问用户
+- [x] 专栏解析
+- [x] 动态解析
+- [x] 视频分p解析
+- [x] 更多自定义配置支持
+- [x] 清晰度选择
+- [x] 更多...
 
 --------------------------------------------------
 
@@ -54,8 +59,6 @@ enable # 开关插件
 shortlink # 开关短链接
 info # 开关详细信息
 download # 开关下载视频
-sendlink # 是否发送解析后的视频链接
-askdownload # 是否开启询问
 addadmin # 添加管理员
 removeadmin # 移除管理员
 listadmins # 管理员列表
@@ -64,6 +67,12 @@ addblack # 添加群黑名单
 removewhite # 移除白名单
 removeblack # 移除黑名单
 listgroups # 查看群组列表
+sendlink # 是否发送解析后的视频链接
+askdownload # 是否开启询问
+thumbnail # 开关下载封面
+setminduration # 设置最小时长(分钟)
+setmaxduration # 设置最大时长(分钟)
+setquality # 设置清晰度 (80, 64, 32, 16)
 ```
 
 -----------------------------------------
@@ -72,10 +81,10 @@ listgroups # 查看群组列表
 
 <summary>相关截图</summary>
 
-![e1ffac4d-3043-4d6b-a814-d6be1497e997.png](https://mirai.mamoe.net/assets/uploads/files/1742203041642-356a4b0d-57b0-4a12-acac-8435e5e4aafa.png)
-![QQ_1742202849146.png](https://mirai.mamoe.net/assets/uploads/files/1742203056542-e1ffac4d-3043-4d6b-a814-d6be1497e997.png)
-![QQ_1742202875264.png](https://mirai.mamoe.net/assets/uploads/files/1742203072380-qq_1742202849146.png)
-![356a4b0d-57b0-4a12-acac-8435e5e4aafa.png](https://mirai.mamoe.net/assets/uploads/files/1742203161015-qq_1742202875264.png)
+<img width="446" height="624" alt="image" src="https://github.com/user-attachments/assets/078da86c-596a-4378-baaf-b9be87a4b820" />
+
+
+mirai论坛好像炸了 之前的图片都失效了
 
 </details>
 
@@ -94,6 +103,12 @@ listgroups # 查看群组列表
 | groupBlackList     | 黑名单群号列表                                       | []                      | %群号%         |
 | sendlink           | 是否发送解析后的视频链接                                  | true                    | false        |
 | askBeforeDownload  | 是否在下载前询问用户                                    | false                   | true         |
+| enableThumbnail  | 是否下载并发送视频封面图                                  | false                   | true         |
+| minimumDuration  | 允许解析的视频最小时长（分钟），0为不限制          | 0                   | &number&        |
+| maximumDuration  | 允许解析的视频最大时长（分钟），0为不限制           | 25                   | &number&         |
+| minDurationTip  | 视频过短时的提示语                                | '视频太短啦！不看不看~'     | /         |
+| maxDurationTip  | 视频过长时的提示语                                 | '视频太长啦！内容还是去B站看吧~'       | /       |
+| videoQuality  | 视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。80(1080P)目前无法使用  | 16       | &number&  |
 
 -------------------------------------------
 
