@@ -5,7 +5,7 @@ plugins {
 
 
 group = "com.bcz"
-version = "2.3.1"
+version = "2.3.2"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public") // 加速依赖下载
