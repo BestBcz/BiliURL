@@ -95,6 +95,16 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
+    // Bilibili bvids are 12 chars: BV1 + 9 chars from Bilibili's base58 alphabet.
+    private const val BV_ID_ALPHABET = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+    private val BV_ID_REGEX = Regex("""(?<![0-9A-Za-z])[Bb][Vv]1[$BV_ID_ALPHABET]{9}(?![0-9A-Za-z])""")
+    private val BILIBILI_VIDEO_URL_REGEX =
+        Regex("""https?://(www\.)?bilibili\.com/video/[Bb][Vv]1[$BV_ID_ALPHABET]{9}(?=$|[^0-9A-Za-z])(?:[/?#][^\s"]*)?""")
+
+    private fun normalizeBvId(bvId: String): String {
+        return "BV" + bvId.substring(2)
+    }
+
     private fun resolveRedirectUrl(url: String): String? {
         return try {
             var currentUrl = url
@@ -141,20 +151,19 @@ object BiliVideoParser : KotlinPlugin(
     private fun extractVideoReferenceFromUrl(url: String): VideoReference? {
         return try {
             val normalized = url.replace("\\/", "/")
-            val bvIdRegex = Regex("""BV[0-9A-Za-z]+""")
-            val directMatch = bvIdRegex.find(normalized)
+            val directMatch = BV_ID_REGEX.find(normalized)
             if (directMatch != null) {
-                return VideoReference(directMatch.value, extractPageNumberFromUrl(normalized))
+                return VideoReference(normalizeBvId(directMatch.value), extractPageNumberFromUrl(normalized))
             }
 
             if (normalized.contains("b23.tv/")) {
                 val shortUrl = extractBilibiliUrlFromText(normalized) ?: normalized
                 val realUrl = resolveRedirectUrl(shortUrl) ?: return null
-                val bvIdMatch = bvIdRegex.find(realUrl) ?: return null
+                val bvIdMatch = BV_ID_REGEX.find(realUrl) ?: return null
                 val resolvedPage = extractPageNumberFromUrl(realUrl)
                 val shortUrlPage = extractPageNumberFromUrl(shortUrl)
                 return VideoReference(
-                    bvId = bvIdMatch.value,
+                    bvId = normalizeBvId(bvIdMatch.value),
                     page = if (resolvedPage > 1) resolvedPage else shortUrlPage
                 )
             }
@@ -832,10 +841,9 @@ object BiliVideoParser : KotlinPlugin(
                 }
 
                 val b23Regex = Regex("""https?://(www\.)?b23\.tv/[A-Za-z0-9]+(?:[/?#][^\s"]*)?""")
-                val biliLongRegex = Regex("""https?://(www\.)?bilibili\.com/video/(BV[0-9A-Za-z]+)(?:[/?#][^\s"]*)?""")
 
                 val b23Match = b23Regex.find(rawText)
-                val longMatch = biliLongRegex.find(rawText)
+                val longMatch = BILIBILI_VIDEO_URL_REGEX.find(rawText)
 
                 if (b23Match != null) {
                     val shortUrl = b23Match.value
