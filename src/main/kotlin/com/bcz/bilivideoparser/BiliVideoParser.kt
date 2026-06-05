@@ -326,7 +326,56 @@ object BiliVideoParser : KotlinPlugin(
         return defaultThumb
     }
 
-    private suspend fun sendShortVideoMessage(group: Group, videoFile: File, thumbnailUrl: String? = null) {
+    private suspend fun sendStandaloneThumbnailMessage(group: Group, thumbnailUrl: String?): Boolean {
+        val url = thumbnailUrl?.takeIf { it.isNotBlank() } ?: return false
+
+        var thumbnailFile: File? = null
+        var thumbnailResource: net.mamoe.mirai.utils.ExternalResource? = null
+        var sent = false
+
+        try {
+            val downloadedThumbnail = withContext(Dispatchers.IO) {
+                downloadThumbnail(url)
+            }
+
+            if (downloadedThumbnail == null) {
+                logger.warning("封面图下载失败，已跳过发送")
+            } else {
+                thumbnailFile = downloadedThumbnail
+                val resource = downloadedThumbnail.toExternalResource("jpg")
+                thumbnailResource = resource
+                withTimeout(5000) {
+                    val imageMessage = group.uploadImage(resource)
+                    group.sendMessage(imageMessage)
+                }
+                sent = true
+            }
+        } catch (e: Exception) {
+            logger.warning("封面图发送失败: ${e.message}")
+        } finally {
+            withContext(Dispatchers.IO) {
+                try {
+                    thumbnailResource?.close()
+                } catch (e: Exception) {
+                    logger.warning("关闭缩略图资源失败: ${e.message}")
+                }
+                try {
+                    thumbnailFile?.delete()
+                } catch (e: Exception) {
+                    logger.warning("删除封面图临时文件失败: ${e.message}")
+                }
+            }
+        }
+
+        return sent
+    }
+
+    private suspend fun sendShortVideoMessage(
+        group: Group,
+        videoFile: File,
+        thumbnailUrl: String? = null,
+        sendThumbnailSeparately: Boolean = Config.enableThumbnail
+    ) {
         if (!videoFile.exists()) {
             logger.warning("视频文件不存在: ${videoFile.name}")
             return
@@ -337,10 +386,11 @@ object BiliVideoParser : KotlinPlugin(
         var thumbnailResource: net.mamoe.mirai.utils.ExternalResource? = null
 
         try {
+            val resolvedThumbnailUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
             val thumbnailJob = async(Dispatchers.IO) {
-                if (thumbnailUrl != null) {
+                if (resolvedThumbnailUrl != null) {
                     try {
-                        downloadThumbnail(thumbnailUrl)
+                        downloadThumbnail(resolvedThumbnailUrl)
                     } catch (e: Exception) {
                         logger.warning("封面图下载失败: ${e.message}")
                         null
@@ -359,18 +409,20 @@ object BiliVideoParser : KotlinPlugin(
 
             thumbnailFile = thumbnailJob.await()
             val thumbnailToUse = thumbnailFile ?: generateDefaultThumbnail()
-            thumbnailResource = thumbnailToUse.toExternalResource("jpg")
-            videoResource = videoResourceJob.await()
+            val preparedThumbnailResource = thumbnailToUse.toExternalResource("jpg")
+            thumbnailResource = preparedThumbnailResource
+            val preparedVideoResource = videoResourceJob.await()
 
-            if (videoResource == null) {
+            if (preparedVideoResource == null) {
                 logger.error("视频资源准备失败")
                 return
             }
+            videoResource = preparedVideoResource
 
-            if (Config.enableThumbnail && thumbnailFile != null) {
+            if (sendThumbnailSeparately && thumbnailFile != null) {
                 try {
                     withTimeout(5000) {
-                        val imageMessage = group.uploadImage(thumbnailResource)
+                        val imageMessage = group.uploadImage(preparedThumbnailResource)
                         group.sendMessage(imageMessage)
                     }
                 } catch (e: Exception) {
@@ -380,7 +432,7 @@ object BiliVideoParser : KotlinPlugin(
 
             try {
                 withTimeout(30000) {
-                    val shortVideo = group.uploadShortVideo(thumbnailResource, videoResource, videoFile.name)
+                    val shortVideo = group.uploadShortVideo(preparedThumbnailResource, preparedVideoResource, videoFile.name)
                     group.sendMessage(shortVideo)
                     logger.info("✅ 视频发送成功: ${videoFile.name}")
                 }
@@ -503,7 +555,12 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     // 切换到方案B (HtmlUnit) + 方案A (injahow 备用)
-    private suspend fun proceedToDownload(group: Group, video: VideoReference, details: VideoDetails?) {
+    private suspend fun proceedToDownload(
+        group: Group,
+        video: VideoReference,
+        details: VideoDetails?,
+        sendThumbnailSeparately: Boolean = Config.enableThumbnail
+    ) {
         val tempVideoFile = File(DOWNLOAD_DIR, "downloaded_video_${video.bvId}_p${video.page}_api.mp4")
         var success = false
         var videoUrl: String?
@@ -565,7 +622,7 @@ object BiliVideoParser : KotlinPlugin(
         if (success && tempVideoFile.exists() && tempVideoFile.length() > 0) {
             val fileSizeMB = tempVideoFile.length() / (1024 * 1024)
             logger.info("✅ 视频下载完成 (${fileSizeMB}MB)，正在发送...")
-            sendShortVideoMessage(group, tempVideoFile, details?.pic)
+            sendShortVideoMessage(group, tempVideoFile, details?.pic, sendThumbnailSeparately)
         } else {
             logger.error("❌ 所有下载方案均失败。")
             group.sendMessage("❌ 视频下载失败 (所有方案均已尝试)。")
@@ -735,6 +792,13 @@ object BiliVideoParser : KotlinPlugin(
             group.sendMessage(message)
         }
 
+        val thumbnailUrl = details?.pic?.takeIf { it.isNotBlank() }
+        val standaloneThumbnailSent = if (Config.enableThumbnail && thumbnailUrl != null) {
+            sendStandaloneThumbnailMessage(group, thumbnailUrl)
+        } else {
+            false
+        }
+
         if (details != null) {
             val durationMinutes = details.selectedDuration(video.page) / 60.0
             if (Config.minimumDuration > 0 && durationMinutes < Config.minimumDuration) {
@@ -756,7 +820,6 @@ object BiliVideoParser : KotlinPlugin(
             return
         }
 
-
         if (video.bvId != "未知BV号") {
             if (Config.askBeforeDownload) {
                 group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘是’（30秒内有效）")
@@ -764,7 +827,7 @@ object BiliVideoParser : KotlinPlugin(
                     val reply = waitForUserReply(group, senderId)
                     val keywords = listOf("下载", "是", "要")
                     if (keywords.any { reply?.contains(it) == true }) {
-                        proceedToDownload(group, video, details)
+                        proceedToDownload(group, video, details, sendThumbnailSeparately = !standaloneThumbnailSent)
                     } else {
                         group.sendMessage("✅ 已忽略视频下载请求")
                     }
@@ -773,7 +836,7 @@ object BiliVideoParser : KotlinPlugin(
                 }
             } else if (Config.enableDownload) {
                 logger.info("🚀 自动下载模式，开始处理视频: ${video.bvId} P${video.page}")
-                proceedToDownload(group, video, details)
+                proceedToDownload(group, video, details, sendThumbnailSeparately = !standaloneThumbnailSent)
             }
         }
     }
