@@ -799,7 +799,7 @@ object BiliVideoParser : KotlinPlugin(
             false
         }
 
-        if (details != null) {
+        if (Config.enableDownload && details != null) {
             val durationMinutes = details.selectedDuration(video.page) / 60.0
             if (Config.minimumDuration > 0 && durationMinutes < Config.minimumDuration) {
                 logger.info("视频 (BV:${video.bvId}, P:${video.page}) 太短 ($durationMinutes min)，已跳过下载。")
@@ -815,12 +815,12 @@ object BiliVideoParser : KotlinPlugin(
                 }
                 return
             }
-        } else if (video.page > 1 && (Config.enableDownload || Config.askBeforeDownload)) {
+        } else if (Config.enableDownload && video.page > 1) {
             group.sendMessage("❌ 无法获取分P信息，已跳过下载，避免误下载 P1。")
             return
         }
 
-        if (video.bvId != "未知BV号") {
+        if (Config.enableDownload && video.bvId != "未知BV号") {
             if (Config.askBeforeDownload) {
                 group.sendMessage("📦 是否下载并发送该视频？请回复 ‘下载’ 或 ‘是’（30秒内有效）")
                 try {
@@ -834,7 +834,7 @@ object BiliVideoParser : KotlinPlugin(
                 } catch (e: TimeoutCancellationException) {
                     logger.info("⌛ 下载请求超时，已跳过下载")
                 }
-            } else if (Config.enableDownload) {
+            } else {
                 logger.info("🚀 自动下载模式，开始处理视频: ${video.bvId} P${video.page}")
                 proceedToDownload(group, video, details, sendThumbnailSeparately = !standaloneThumbnailSent)
             }
