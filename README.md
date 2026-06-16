@@ -112,3 +112,7 @@ mirai论坛好像炸了 之前的图片都失效了
 
 -------------------------------------------
 
+
+## Stargazers over time
+[![Stargazers over time](https://starchart.cc/BestBcz/BiliURL.svg?background=%23FFFFFF&axis=%23333333&line=%2300eeff)](https://starchart.cc/BestBcz/BiliURL)
+
