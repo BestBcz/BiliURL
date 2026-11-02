@@ -14,6 +14,7 @@ repositories {
 }
 
 
+
 dependencies {
     implementation(kotlin("stdlib"))
     compileOnly("net.mamoe:mirai-core:2.16.0")
