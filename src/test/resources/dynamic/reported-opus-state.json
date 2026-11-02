@@ -1,0 +1,326 @@
+{
+  "detail": {
+    "basic": {
+      "uid": "2067524167"
+    },
+    "id_str": "1259705064636809218",
+    "modules": [
+      {
+        "module_author": null,
+        "module_type": "MODULE_TYPE_TITLE",
+        "module_content": null,
+        "module_title": {
+          "text": "肯德基新品肉霸堡是真的好吃阿 ！",
+          "tag": null,
+          "tags": [],
+          "category_name": "",
+          "category_uri": ""
+        }
+      },
+      {
+        "module_author": {
+          "pub_ts": "1792136341",
+          "name": "老莉莉12",
+          "mid": 2067524167
+        },
+        "module_type": "MODULE_TYPE_AUTHOR",
+        "module_content": null,
+        "module_title": null
+      },
+      {
+        "module_author": null,
+        "module_type": "MODULE_TYPE_CONTENT",
+        "module_content": {
+          "paragraphs": [
+            {
+              "para_type": 1,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": {
+                  "first_line_indent": 0,
+                  "indent": 0
+                }
+              },
+              "text": {
+                "nodes": [
+                  {
+                    "type": "TEXT_NODE_TYPE_WORD",
+                    "word": {
+                      "words": "\n",
+                      "font_size": 17,
+                      "color": "",
+                      "dark_color": "",
+                      "style": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "background": ""
+                      },
+                      "font_level": "",
+                      "translated_words": "",
+                      "bili_theme": "",
+                      "bg_style": null
+                    },
+                    "rich": null,
+                    "formula": null,
+                    "user": null
+                  }
+                ]
+              },
+              "pic": null,
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 1,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": {
+                  "first_line_indent": 0,
+                  "indent": 0
+                }
+              },
+              "text": {
+                "nodes": [
+                  {
+                    "type": "TEXT_NODE_TYPE_WORD",
+                    "word": {
+                      "words": "bro！",
+                      "font_size": 17,
+                      "color": "",
+                      "dark_color": "",
+                      "style": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "background": ""
+                      },
+                      "font_level": "regular",
+                      "translated_words": "",
+                      "bili_theme": "",
+                      "bg_style": null
+                    },
+                    "rich": null,
+                    "formula": null,
+                    "user": null
+                  }
+                ]
+              },
+              "pic": null,
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 2,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": null
+              },
+              "text": null,
+              "pic": {
+                "pics": [
+                  {
+                    "url": "http://i0.hdslb.com/bfs/new_dyn/c4680065fbc4727f1e445d963ebc94c42067524167.jpg",
+                    "width": 3024,
+                    "height": 4032,
+                    "size": 1854.5,
+                    "live_url": "",
+                    "aigc": 0,
+                    "warning": null,
+                    "comment": ""
+                  }
+                ],
+                "style": 2
+              },
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 1,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": {
+                  "first_line_indent": 0,
+                  "indent": 0
+                }
+              },
+              "text": {
+                "nodes": [
+                  {
+                    "type": "TEXT_NODE_TYPE_WORD",
+                    "word": {
+                      "words": "\n",
+                      "font_size": 17,
+                      "color": "",
+                      "dark_color": "",
+                      "style": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "background": ""
+                      },
+                      "font_level": "",
+                      "translated_words": "",
+                      "bili_theme": "",
+                      "bg_style": null
+                    },
+                    "rich": null,
+                    "formula": null,
+                    "user": null
+                  }
+                ]
+              },
+              "pic": null,
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 2,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": null
+              },
+              "text": null,
+              "pic": {
+                "pics": [
+                  {
+                    "url": "http://i0.hdslb.com/bfs/new_dyn/df5b25a3f326cf790d4f72dbb71d77ff2067524167.jpg",
+                    "width": 3024,
+                    "height": 4032,
+                    "size": 2185.25,
+                    "live_url": "",
+                    "aigc": 0,
+                    "warning": null,
+                    "comment": ""
+                  }
+                ],
+                "style": 2
+              },
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 1,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": {
+                  "first_line_indent": 0,
+                  "indent": 0
+                }
+              },
+              "text": {
+                "nodes": [
+                  {
+                    "type": "TEXT_NODE_TYPE_WORD",
+                    "word": {
+                      "words": "\n",
+                      "font_size": 17,
+                      "color": "",
+                      "dark_color": "",
+                      "style": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "background": ""
+                      },
+                      "font_level": "",
+                      "translated_words": "",
+                      "bili_theme": "",
+                      "bg_style": null
+                    },
+                    "rich": null,
+                    "formula": null,
+                    "user": null
+                  }
+                ]
+              },
+              "pic": null,
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            },
+            {
+              "para_type": 1,
+              "align": 0,
+              "format": {
+                "align": 0,
+                "indent": {
+                  "first_line_indent": 0,
+                  "indent": 0
+                }
+              },
+              "text": {
+                "nodes": [
+                  {
+                    "type": "TEXT_NODE_TYPE_WORD",
+                    "word": {
+                      "words": "\n",
+                      "font_size": 17,
+                      "color": "",
+                      "dark_color": "",
+                      "style": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "background": ""
+                      },
+                      "font_level": "",
+                      "translated_words": "",
+                      "bili_theme": "",
+                      "bg_style": null
+                    },
+                    "rich": null,
+                    "formula": null,
+                    "user": null
+                  }
+                ]
+              },
+              "pic": null,
+              "line": null,
+              "list": null,
+              "link_card": null,
+              "code": null,
+              "heading": null,
+              "blockquote": null
+            }
+          ]
+        },
+        "module_title": null
+      }
+    ]
+  }
+}

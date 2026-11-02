@@ -1,0 +1,51 @@
+{
+  "code": 0,
+  "data": {
+    "item": {
+      "visible": true,
+      "id_str": "1259705064636809218",
+      "modules": {
+        "module_author": {
+          "pub_ts": "1792136341",
+          "name": "老莉莉12",
+          "mid": 2067524167
+        },
+        "module_dynamic": {
+          "topic": null,
+          "desc": null,
+          "major": {
+            "type": "MAJOR_TYPE_ARTICLE",
+            "none": null,
+            "blocked": null,
+            "archive": null,
+            "pgc": null,
+            "courses": null,
+            "draw": null,
+            "article": {
+              "id": "53464586",
+              "jump_url": "//www.bilibili.com/read/cv53464586/",
+              "title": "肯德基新品肉霸堡是真的好吃阿！",
+              "desc": "bro！[图片][图片]",
+              "covers": [
+                "https://i0.hdslb.com/bfs/new_dyn/banner/b45e4dc6579a9fa1cd8d33415605f58e2067524167.png"
+              ],
+              "label": "1021阅读"
+            },
+            "music": null,
+            "common": null,
+            "upower_common": null,
+            "live": null,
+            "live_rcmd": null,
+            "medialist": null,
+            "subscription": null,
+            "ugc_season": null,
+            "subscription_new": null,
+            "opus": null
+          },
+          "additional": null
+        }
+      },
+      "type": "DYNAMIC_TYPE_ARTICLE"
+    }
+  }
+}

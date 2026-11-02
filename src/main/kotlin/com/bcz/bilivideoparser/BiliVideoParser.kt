@@ -28,7 +28,7 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "2.4.0"
+        version = "2.4.1"
     ) {
         author("Bcz")
     }
@@ -492,6 +492,9 @@ object BiliVideoParser : KotlinPlugin(
                 BiliDynamicParser.sendDynamicMessage(group, dynamicResult)
                 return true
             }
+            parseCache.remove(dynamicId)
+            group.sendMessage("❌ 动态解析失败或内容暂不可见，请稍后重试。")
+            return true
         }
 
         val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(resolvedUrl)
