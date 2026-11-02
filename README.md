@@ -115,7 +115,16 @@ mirai论坛好像炸了 之前的图片都失效了
 
 从 v2.3.4 起，视频详情优先使用 WBI 签名接口，失败后依次尝试旧接口和视频网页内的数据。播放解析同样使用签名接口，优先请求包含音视频的单文件 MP4，并在所选画质不可用时尝试 360P；无需 FFmpeg。下载会尝试 B站返回的备用 CDN 地址。
 
-若机器人所在服务器仍受到风控，在 `config/com.bcz.bilivideoparser/BiliVideoParserConfig.yml` 中填写 `bilibiliCookie: '你的 Cookie'` 后重启机器人。Cookie 可从自己已登录的 B站网页开发者工具 → Network → 发往 `api.bilibili.com` 的请求 → Request Headers → Cookie 复制。Cookie 属于登录凭据，请仅保存在机器人本地配置中，不要提交到仓库或发送到群聊；过期后需更新。签名和 Cookie 无法保证解除服务器 IP 层面的风控。
+若机器人所在服务器仍受到风控，在 `config/com.bcz.bilivideoparser/BiliVideoParserConfig.yml` 中配置 Cookie 后重启机器人。推荐使用 YAML 字面量块，避免 Cookie 内的引号、竖线等字符破坏配置格式：
+
+```yaml
+bilibiliCookie: |-
+  buvid3=示例值; rpdid=示例值; SESSDATA=示例值; bili_jct=示例值
+```
+
+用自己的完整 Cookie 替换示例第二行，保持为一个实际文本行，并保留行首两个空格；`|-` 后不要填写 Cookie。Cookie 的值应原样保留，不需要额外添加引号或转义。不要直接用单引号包裹整段 Cookie，因为 Cookie 本身可能含有单引号，导致 `YamlDecodingException` 和插件启动失败。
+
+Cookie 可从自己已登录的 B站网页开发者工具 → Network → 发往 `api.bilibili.com` 的请求 → Request Headers → Cookie 复制。Cookie 属于登录凭据，请仅保存在机器人本地配置中，不要提交到仓库或发送到群聊；过期后需更新。签名和 Cookie 无法保证解除服务器 IP 层面的风控。
 
 若全部解析方式失败，插件会显示失败提示并记录各次请求的 HTTP 状态或接口错误码，且不会把失败结果放入 30 秒冷却。排查时请提供错误码，不要提供 Cookie。
 
