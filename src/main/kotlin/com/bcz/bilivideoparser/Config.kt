@@ -54,8 +54,11 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
     @ValueDescription("视频过长时的提示语")
     var maxDurationTip: String by value("视频太长啦！内容还是去B站看吧~")
 
-    @ValueDescription("视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。80(1080P)可能需要FFmpeg，建议使用 64。")
+    @ValueDescription("视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。优先所选画质；无法获取单文件 MP4 时尝试 360P。")
     var videoQuality: String by value("16") // 默认 360P
+
+    @ValueDescription("可选：B站 Cookie。遇到 HTTP 412/-352 风控时可填写浏览器中的 Cookie；请勿公开或发送给他人。留空使用游客模式。")
+    var bilibiliCookie: String by value("")
 
 
     /**
@@ -73,7 +76,7 @@ object Config : AutoSavePluginConfig("BiliVideoParserConfig") {
         return qq in adminQQs
     }
 
-    private const val CURRENT_CONFIG_VERSION = 6
+    private const val CURRENT_CONFIG_VERSION = 7
 
     @OptIn(ConsoleExperimentalApi::class)
     override fun onInit(owner: PluginDataHolder, storage: PluginDataStorage) {

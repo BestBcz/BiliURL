@@ -108,7 +108,16 @@ mirai论坛好像炸了 之前的图片都失效了
 | maximumDuration  | 允许解析的视频最大时长（分钟），0为不限制           | 25                   | &number&         |
 | minDurationTip  | 视频过短时的提示语                                | '视频太短啦！不看不看~'     | /         |
 | maxDurationTip  | 视频过长时的提示语                                 | '视频太长啦！内容还是去B站看吧~'       | /       |
-| videoQuality  | 视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。80(1080P)目前无法使用  | 16       | &number&  |
+| videoQuality  | 视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。可用画质受登录状态限制，不可用时尝试 360P | 16 | &number& |
+| bilibiliCookie | 可选的 B站 Cookie；服务器遇到 HTTP 412/-352 风控时可配置，留空为游客模式 | 空字符串 | 浏览器 Cookie |
+
+### HTTP 412 / -352 与视频解析失败
+
+从 v2.3.4 起，视频详情优先使用 WBI 签名接口，失败后依次尝试旧接口和视频网页内的数据。播放解析同样使用签名接口，优先请求包含音视频的单文件 MP4，并在所选画质不可用时尝试 360P；无需 FFmpeg。下载会尝试 B站返回的备用 CDN 地址。
+
+若机器人所在服务器仍受到风控，在 `config/com.bcz.bilivideoparser/BiliVideoParserConfig.yml` 中填写 `bilibiliCookie: '你的 Cookie'` 后重启机器人。Cookie 可从自己已登录的 B站网页开发者工具 → Network → 发往 `api.bilibili.com` 的请求 → Request Headers → Cookie 复制。Cookie 属于登录凭据，请仅保存在机器人本地配置中，不要提交到仓库或发送到群聊；过期后需更新。签名和 Cookie 无法保证解除服务器 IP 层面的风控。
+
+若全部解析方式失败，插件会显示失败提示并记录各次请求的 HTTP 状态或接口错误码，且不会把失败结果放入 30 秒冷却。排查时请提供错误码，不要提供 Cookie。
 
 -------------------------------------------
 

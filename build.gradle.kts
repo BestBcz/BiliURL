@@ -5,7 +5,7 @@ plugins {
 
 
 group = "com.bcz"
-version = "2.3.3"
+version = "2.3.4"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public") // 加速依赖下载
@@ -21,6 +21,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.8.9")
     implementation("com.squareup.okio:okio:3.7.0")
     implementation("net.mamoe:mirai-core-utils:2.16.0")
+    testImplementation(kotlin("test-junit"))
 }
 tasks.withType<Jar> {
     from({

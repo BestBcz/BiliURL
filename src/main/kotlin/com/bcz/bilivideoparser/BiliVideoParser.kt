@@ -13,9 +13,8 @@ import net.mamoe.mirai.message.data.content
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import java.awt.Color
 import java.awt.image.BufferedImage
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Paths
@@ -29,11 +28,15 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "2.3.3"
+        version = "2.3.4"
     ) {
         author("Bcz")
     }
 ) {
+    private val biliApi = BiliApiClient(
+        cookie = { Config.bilibiliCookie },
+        warning = { logger.warning(it) }
+    )
 
     // 冷却缓存
     private val parseCache = ConcurrentHashMap<String, Long>()
@@ -113,7 +116,8 @@ object BiliVideoParser : KotlinPlugin(
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                connection.setRequestProperty("User-Agent", BiliApiClient.USER_AGENT)
+                connection.setRequestProperty("Referer", "https://www.bilibili.com/")
                 connection.connect()
                 val location = connection.getHeaderField("Location")
                 connection.disconnect()
@@ -203,25 +207,8 @@ object BiliVideoParser : KotlinPlugin(
         )
     }
 
-    data class BiliApiResponse(val code: Int, val data: VideoDetails?)
-    private fun getVideoDetails(bvId: String): VideoDetails? {
-        val apiUrl = "https://api.bilibili.com/x/web-interface/view?bvid=$bvId"
-        return try {
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-            val reader = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
-            val response = reader.readText()
-            reader.close()
-            val apiResponse = Gson().fromJson(response, BiliApiResponse::class.java)
-            if (apiResponse.code == 0) apiResponse.data else null
-        } catch (e: Exception) {
-            logger.error("获取视频详情失败: ${e.message}")
-            null
-        }
+    private fun getVideoDetails(bvId: String): VideoDetails {
+        return Gson().fromJson(biliApi.getVideoData(bvId), VideoDetails::class.java)
     }
 
     private fun VideoDetails.selectedPage(pageNumber: Int): VideoDetails.Page? {
@@ -491,20 +478,25 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     private suspend fun GroupMessageEvent.handleBilibiliUrl(url: String, qqAppJson: String? = null): Boolean {
-        val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(url)
+        val originalLink = extractBilibiliUrlFromText(url) ?: url
+        // Resolve a short link once, before routing to a video, article or dynamic parser.
+        val resolvedUrl = withContext(Dispatchers.IO) {
+            if (originalLink.contains("b23.tv/")) resolveRedirectUrl(originalLink) else originalLink
+        } ?: return false
+        val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(resolvedUrl)
         if (dynamicId != null) {
             if (isRateLimited(dynamicId, "Dynamic")) return true
-            val dynamicResult = BiliDynamicParser.parseDynamic(url, qqAppJson)
+            val dynamicResult = BiliDynamicParser.parseDynamic(resolvedUrl, qqAppJson)
             if (dynamicResult != null) {
                 BiliDynamicParser.sendDynamicMessage(group, dynamicResult)
                 return true
             }
         }
 
-        val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(url)
+        val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(resolvedUrl)
         if (articleId != null) {
             if (isRateLimited("cv$articleId", "Article")) return true
-            val articleResult = BiliArticleParser.parseArticle(url, qqAppJson)
+            val articleResult = BiliArticleParser.parseArticle(resolvedUrl, qqAppJson)
             if (articleResult != null) {
                 sendArticleMessage(group, articleResult)
                 return true
@@ -513,9 +505,8 @@ object BiliVideoParser : KotlinPlugin(
             return true
         }
 
-        val video = extractVideoReferenceFromUrl(url)
+        val video = extractVideoReferenceFromUrl(resolvedUrl)
         if (video != null) {
-            val originalLink = extractBilibiliUrlFromText(url) ?: url
             val videoLink = if (Config.useShortLink) originalLink else video.longUrl()
             handleParsedBVId(group, video, videoLink, sender.id)
             return true
@@ -537,8 +528,8 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     private fun extractBilibiliUrlFromText(text: String): String? {
-        val normalized = text.replace("\\/", "/")
-        val regex = Regex("""https?://(?:www\.)?(?:bilibili\.com|b23\.tv)/[^\s\"]+""")
+        val normalized = text.replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&")
+        val regex = Regex("""https?://(?:(?:www|m|t)\.)?(?:bilibili\.com|b23\.tv)/[^\s\"]+""")
         return regex.find(normalized)?.value
     }
 
@@ -554,7 +545,7 @@ object BiliVideoParser : KotlinPlugin(
         handleParsedBVId(group, video, videoLink, sender.id)
     }
 
-    // 切换到方案B (HtmlUnit) + 方案A (injahow 备用)
+    // 原生签名 API 优先，保留第三方备用解析。
     private suspend fun proceedToDownload(
         group: Group,
         video: VideoReference,
@@ -570,21 +561,22 @@ object BiliVideoParser : KotlinPlugin(
         if (cid != null) {
             try {
                 // 在 IO 线程中执行网络请求
-                videoUrl = withContext(Dispatchers.IO) {
-                    downloadWithNativeApi(video, cid, Config.videoQuality)
+                val videoUrls = withContext(Dispatchers.IO) {
+                    biliApi.getPlaybackUrls(video.bvId, cid, Config.videoQuality)
                 }
-
-                if (videoUrl != null) {
-                    logger.info("✅ [方案B] API 解析成功，正在下载视频...")
-                    withContext(Dispatchers.IO) {
-                        downloadVideoFile(videoUrl!!, tempVideoFile, video.longUrl())
+                for (candidate in videoUrls) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            downloadVideoFile(candidate, tempVideoFile, video.longUrl())
+                        }
+                        success = true
+                        break
+                    } catch (e: IOException) {
+                        logger.warning("视频 CDN 下载失败，尝试备用地址: ${e.message}")
                     }
-                    success = true
-                } else {
-                    logger.warning("⚠️ [方案B] 原生 API 未返回 .mp4 链接 (可能需要DASH/FFmpeg 或该画质不可用)。")
                 }
             } catch (e: Exception) {
-                logger.error("❌ [方案B] 原生 API (HtmlUnit) 失败: ${e.message}")
+                logger.error("❌ [方案B] 原生 API 失败: ${e.message}")
                 // 捕获异常，继续执行方案 A
             }
         } else {
@@ -629,58 +621,6 @@ object BiliVideoParser : KotlinPlugin(
         }
     }
 
-    // 方案B的实现
-    private fun downloadWithNativeApi(video: VideoReference, cid: Long, quality: String): String? {
-        // fnval=0 请求 mp4/flv (durl) 格式
-        val apiUrl = "https://api.bilibili.com/x/player/playurl?bvid=${video.bvId}&cid=$cid&qn=$quality&fnval=0"
-
-        try {
-            // 使用 HttpURLConnection
-            logger.info("[方案B] 正在请求原生 API (Header伪装): $apiUrl")
-
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-            // 伪装 User-Agent 和 Referer
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            connection.setRequestProperty("Referer", video.longUrl())
-
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                logger.error("[方案B] API 解析失败: HTTP ${connection.responseCode}")
-                if (connection.responseCode == 412) {
-                    logger.error("❌ [方案B] 伪装 Header 测试失败，服务器返回 412 (Precondition Failed)！")
-                }
-                return null
-            }
-
-            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).readText()
-            connection.disconnect()
-
-            if (response.isBlank()) {
-                logger.error("[方案B] API 返回为空")
-                return null
-            }
-
-            val json = JsonParser.parseString(response).asJsonObject
-
-            if (json.has("code") && json["code"].asInt == 0) {
-                val data = json["data"]?.asJsonObject ?: return null
-
-                // 查找 durl (MP4)
-                if (data.has("durl") && data["durl"].asJsonArray.size() > 0) {
-                    val durl = data["durl"].asJsonArray[0].asJsonObject
-                    return durl["url"]?.asString
-                }
-            }
-            logger.error("[方案B] API 解析失败: ${json["message"]?.asString ?: "无 durl 字段 (可能该画质仅支持DASH)"}")
-            return null
-        } catch (e: Exception) {
-            logger.error("[方案B] 原生 API (Header伪装) 异常: ${e.message}")
-            return null
-        }
-    }
-
     // 方案A的实现 (injahow)
     private fun downloadWithFallbackApi(bvId: String, quality: String): String? {
         val apiUrl = "https://api.injahow.cn/bparse/?bv=$bvId&q=$quality&format=mp4&otype=json"
@@ -720,17 +660,31 @@ object BiliVideoParser : KotlinPlugin(
     @Throws(Exception::class)
     private fun downloadVideoFile(videoUrl: String, destination: File, referer: String = "https://www.bilibili.com/") {
         val videoConnection = URL(videoUrl).openConnection() as HttpURLConnection
-        videoConnection.connectTimeout = 15000 // 15秒连接超时
-        videoConnection.readTimeout = 180000  // 3分钟读取超时
-        videoConnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        videoConnection.setRequestProperty("Referer", referer)
-
-        videoConnection.inputStream.use { input ->
-            destination.outputStream().use { output ->
-                input.copyTo(output)
+        try {
+            videoConnection.connectTimeout = 15000
+            videoConnection.readTimeout = 180000
+            videoConnection.setRequestProperty("User-Agent", BiliApiClient.USER_AGENT)
+            videoConnection.setRequestProperty("Referer", referer)
+            if (videoConnection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IOException("HTTP ${videoConnection.responseCode}")
             }
+            val contentType = videoConnection.contentType.orEmpty()
+            if (contentType.contains("text/") || contentType.contains("json")) {
+                throw IOException("下载地址返回了 $contentType，未返回视频")
+            }
+            val expectedSize = videoConnection.contentLengthLong
+            videoConnection.inputStream.use { input ->
+                destination.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (destination.length() == 0L || (expectedSize >= 0 && destination.length() != expectedSize)) {
+                throw IOException("视频文件为空或下载不完整")
+            }
+        } catch (e: Exception) {
+            destination.delete()
+            throw e
+        } finally {
+            videoConnection.disconnect()
         }
-        videoConnection.disconnect()
     }
 
 
@@ -758,17 +712,27 @@ object BiliVideoParser : KotlinPlugin(
         if (isRateLimited(video.rateLimitKey, "Video")) {
             return // 处于冷却中，停止执行
         }
-        val details = getVideoDetails(video.bvId) //
-        val selectedPage = details?.selectedPage(video.page)
+        val details = try {
+            withContext(Dispatchers.IO) { getVideoDetails(video.bvId) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error("获取视频详情失败: ${e.message}")
+            parseCache.remove(video.rateLimitKey)
+            val link = if (Config.enableSendLink) "\n链接: $videoLink" else ""
+            group.sendMessage("❌ 获取视频详情失败，可能受到B站风控限制。请查看控制台日志；可配置 bilibiliCookie 后重试。$link")
+            return
+        }
+        val selectedPage = details.selectedPage(video.page)
 
-        if (details != null && video.page > 1 && details.pages.orEmpty().isNotEmpty() && selectedPage == null) {
+        if (video.page > 1 && details.pages.orEmpty().isNotEmpty() && selectedPage == null) {
             group.sendMessage("❌ 未找到该视频的 P${video.page}，当前共 ${details.pageCount()}P。")
             return
         }
 
         var message = ""
 
-        if (details != null && Config.enableDetailedInfo) { //
+        if (Config.enableDetailedInfo) {
             message += buildString {
                 appendLine("【${details.selectedTitle(video.page)}】")
                 if (details.pageCount() > 1) {
@@ -792,14 +756,14 @@ object BiliVideoParser : KotlinPlugin(
             group.sendMessage(message)
         }
 
-        val thumbnailUrl = details?.pic?.takeIf { it.isNotBlank() }
+        val thumbnailUrl = details.pic.takeIf { it.isNotBlank() }
         val standaloneThumbnailSent = if (Config.enableThumbnail && thumbnailUrl != null) {
             sendStandaloneThumbnailMessage(group, thumbnailUrl)
         } else {
             false
         }
 
-        if (Config.enableDownload && details != null) {
+        if (Config.enableDownload) {
             val durationMinutes = details.selectedDuration(video.page) / 60.0
             if (Config.minimumDuration > 0 && durationMinutes < Config.minimumDuration) {
                 logger.info("视频 (BV:${video.bvId}, P:${video.page}) 太短 ($durationMinutes min)，已跳过下载。")
@@ -815,9 +779,6 @@ object BiliVideoParser : KotlinPlugin(
                 }
                 return
             }
-        } else if (Config.enableDownload && video.page > 1) {
-            group.sendMessage("❌ 无法获取分P信息，已跳过下载，避免误下载 P1。")
-            return
         }
 
         if (Config.enableDownload && video.bvId != "未知BV号") {
