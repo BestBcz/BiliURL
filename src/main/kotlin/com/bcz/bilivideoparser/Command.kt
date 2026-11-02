@@ -53,13 +53,30 @@ object BiliVideoParserCommand : SimpleCommand(
                 thumbnail # 开关下载封面
                 setminduration # 设置最小时长(分钟)
                 setmaxduration # 设置最大时长(分钟)
-                setquality # 设置清晰度 (80, 64, 32, 16)
+                login # 扫码登录B站（仅管理员/控制台）
+                loginstatus # 查看登录状态和大会员状态
+                logout # 取消扫码并清除本地登录
+                setquality # 清晰度 (16,32,64,74,80,112,116,120,127)
                 """.trimIndent()
             )
             return
         }
 
         when (option.lowercase()) {
+            "login", "loginstatus", "logout" -> {
+                if (!isConsole && (userQQ == null || !Config.isAdmin(userQQ))) {
+                    sendMessage("仅配置中的管理员或控制台可以管理B站登录。")
+                    return
+                }
+                when (option.lowercase()) {
+                    "login" -> BiliVideoParser.biliLogin.start(this)
+                    "loginstatus" -> BiliVideoParser.biliLogin.status(this)
+                    "logout" -> {
+                        BiliVideoParser.biliLogin.logout()
+                        sendMessage("已取消扫码并清除本地登录及手动 Cookie，之后将使用游客模式。")
+                    }
+                }
+            }
             "enable" -> updateBoolConfig("enableParsing", value) { Config.enableParsing = it }
             "shortlink" -> updateBoolConfig("useShortLink", value) { Config.useShortLink = it }
             "info" -> updateBoolConfig("enableDetailedInfo", value) { Config.enableDetailedInfo = it }
@@ -92,11 +109,12 @@ object BiliVideoParserCommand : SimpleCommand(
             "setmaxduration" -> updateIntConfig("maximumDuration", value) { Config.maximumDuration = it }
 
             "setquality" -> {
-                if (value == null || !listOf("80", "64", "32", "16").contains(value)) {
-                    sendMessage("❌ 无效的清晰度。请输入: 80, 64, 32, 或 16")
+                val quality = value?.toIntOrNull()
+                if (quality == null || quality !in VideoQuality.names) {
+                    sendMessage("❌ 无效的清晰度。可选：${VideoQuality.names.entries.joinToString { "${it.key}=${it.value}" }}")
                 } else {
-                    Config.videoQuality = value
-                    sendMessage("✅ 视频清晰度已设置为: $value (1080P=80, 720P=64)")
+                    Config.videoQuality = quality.toString()
+                    sendMessage("✅ 视频清晰度已设置为: ${VideoQuality.name(quality)} ($quality)。高画质需要账号权限，DASH 下载需要 FFmpeg。")
                 }
             }
 

@@ -37,21 +37,7 @@ object BiliArticleParser {
         val apiUrl = "https://api.bilibili.com/x/article/viewinfo?id=$articleId&mobi_app=pc&from=web"
 
         return try {
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                BiliVideoParser.logger.warning("[ArticleParser] API 返回错误码: ${connection.responseCode}")
-                connection.disconnect()
-                return null
-            }
-
-            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).readText()
-            connection.disconnect()
+            val response = BiliVideoParser.biliHttp.get(apiUrl).body
 
             val json = Gson().fromJson(response, Map::class.java)
             val code = (json["code"] as? Double)?.toInt() ?: -1

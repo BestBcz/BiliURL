@@ -5,11 +5,6 @@ import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import java.io.IOException
 import java.io.StringReader
-import java.net.CookieManager
-import java.net.CookiePolicy
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 
@@ -17,9 +12,9 @@ import java.security.MessageDigest
 internal class BiliApiClient(
     private val cookie: () -> String = { "" },
     private val warning: (String) -> Unit = {},
-    private val transport: ((String) -> String)? = null
+    private val transport: ((String) -> String)? = null,
+    private val http: BiliHttpClient = BiliHttpClient(cookie, warning)
 ) {
-    private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
     private var cachedKey: Pair<String, Long>? = null
 
     fun getVideoData(bvId: String): JsonObject {
@@ -42,6 +37,29 @@ internal class BiliApiClient(
 
     /** Request a single MP4 containing both audio and video; DASH/FLV need a muxer. */
     fun getPlaybackUrls(bvId: String, cid: Long, quality: String): List<String> {
+        return getMp4Playback(bvId, cid, quality).videoUrls
+    }
+
+    fun getPlayback(bvId: String, cid: Long, quality: String, allowDash: Boolean): BiliPlayback {
+        val requested = quality.toIntOrNull() ?: 16
+        if (allowDash && requested > 16) {
+            val params = mapOf("bvid" to bvId, "cid" to cid.toString(), "qn" to requested.toString(),
+                "fnval" to "4048", "fnver" to "0", "fourk" to "1", "platform" to "pc")
+            for (source in listOf<() -> String>(
+                { signedUrl("/x/player/wbi/playurl", params) },
+                { "$API/x/player/playurl?${WbiSigner.query(params)}" }
+            )) {
+                try {
+                    return DashPlaybackParser.parse(apiData(source()), requested)
+                } catch (e: Exception) {
+                    warning("DASH 解析未成功，尝试备用格式: ${e.message}")
+                }
+            }
+        }
+        return getMp4Playback(bvId, cid, quality)
+    }
+
+    private fun getMp4Playback(bvId: String, cid: Long, quality: String): BiliPlayback {
         var failure: Exception? = null
         for (qn in listOf(quality, "16").distinct()) {
             val params = mapOf(
@@ -67,7 +85,7 @@ internal class BiliApiClient(
                     }
                     val validUrls = urls.filter { it.startsWith("https://") || it.startsWith("http://") }.distinct()
                     if (validUrls.isEmpty()) throw IOException("播放接口返回的 MP4 地址为空")
-                    return validUrls
+                    return BiliPlayback(data.get("quality")?.asInt ?: qn.toInt(), validUrls)
                 } catch (e: Exception) {
                     failure = e
                     warning("视频播放备用解析: ${e.message}")
@@ -113,36 +131,13 @@ internal class BiliApiClient(
 
     private fun request(url: String): String {
         transport?.let { return it(url) }
-        val connection = URL(url).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 15_000
-            connection.setRequestProperty("User-Agent", USER_AGENT)
-            connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-            connection.setRequestProperty("Accept", "application/json, text/html;q=0.9, */*;q=0.8")
-            connection.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
-            val uri = URI(url)
-            synchronized(cookies) {
-                cookies.get(uri, emptyMap()).forEach { (name, values) ->
-                    connection.setRequestProperty(name, values.joinToString("; "))
-                }
-            }
-            cookie().trim().takeIf { it.isNotEmpty() }?.let { connection.setRequestProperty("Cookie", it) }
-            val status = connection.responseCode
-            synchronized(cookies) { cookies.put(uri, connection.headerFields.filterKeys { it != null }) }
-            if (status != HttpURLConnection.HTTP_OK) {
-                val reason = if (status == 412 || status == 429) "，请求被风控拦截，可在配置中填写 bilibiliCookie 后重试" else ""
-                throw IOException("HTTP $status (${connection.url.host}${connection.url.path})$reason")
-            }
-            return connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
+        http.prepareBrowserSession()
+        return http.get(url).body
     }
 
     companion object {
         private const val API = "https://api.bilibili.com"
-        const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        const val USER_AGENT = BiliHttpClient.USER_AGENT
 
         internal fun videoDataFromHtml(html: String): JsonObject {
             val marker = Regex("(?:window\\.)?__INITIAL_STATE__\\s*=\\s*").find(html)

@@ -53,23 +53,7 @@ object BiliDynamicParser {
                     "$apiUrl?dynamic_id=$dynamicId" // 兜底
                 }
 
-                val connection = URL(fullUrl).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/5.36")
-                connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-                connection.setRequestProperty("Origin", "https://www.bilibili.com") //
-
-
-                val responseCode = connection.responseCode
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                    BiliVideoParser.logger.warning("[DynamicParser] API $apiUrl 返回错误码: $responseCode")
-                    continue // 尝试下一个 API
-                }
-
-                val response = connection.inputStream.bufferedReader(Charsets.UTF_8).readText()
-                connection.disconnect()
+                val response = BiliVideoParser.biliHttp.get(fullUrl).body
 
                 BiliVideoParser.logger.info("[DynamicParser] 请求: $fullUrl")
                 BiliVideoParser.logger.info("[DynamicParser] 返回: $response")

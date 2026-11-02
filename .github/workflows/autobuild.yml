@@ -39,6 +39,10 @@ jobs:
       - name: Detect meaningful changes
         id: check
         run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           git fetch origin master --depth=2
 
           HEAD_HASH=$(git rev-parse HEAD)
@@ -54,7 +58,7 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          if echo "$CHANGED" | grep -qE 'build.gradle.kts|src/|BiliVideoParser.kt'; then
+          if echo "$CHANGED" | grep -qE '^build.gradle.kts$|^src/|^gradle/|^settings.gradle.kts$|^gradle.properties$|^\.github/workflows/'; then
             echo "should_build=true" >> $GITHUB_OUTPUT
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
@@ -68,12 +72,17 @@ jobs:
         if: steps.check.outputs.should_build == 'true'
         run: |
           chmod +x ./gradlew
-          ./gradlew build
+          ./gradlew clean verifyReleaseArtifacts
 
       - name: Generate changelog
         if: steps.check.outputs.should_build == 'true'
         run: |
           echo "## AutoBuild Changelog" > release_notes.md
+          echo "" >> release_notes.md
+          echo '## 安装包' >> release_notes.md
+          echo '- `*.mirai2.jar`：单插件包，第三方依赖由 Mirai 在首次启动时下载。' >> release_notes.md
+          echo '- `*-with-dependencies.mirai.jar`：内置第三方 JVM 依赖。' >> release_notes.md
+          echo '- 两种包只安装一个；FFmpeg 仍需另行安装。' >> release_notes.md
           echo "" >> release_notes.md
 
           COMMITS=$(git log -n 10 --pretty=format:"%s (%an)" | grep -v 'dependabot')
@@ -117,7 +126,25 @@ jobs:
           tag_name: autobuild-latest  # ✅ 始终覆盖这个 tag
           name: "Autobuild Latest"
           body_path: release_notes.md
-          files: build/libs/*.jar
+          files: |
+            build/release/*.mirai2.jar
+            build/release/*-with-dependencies.mirai.jar
+          fail_on_unmatched_files: true
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove obsolete autobuild packages
+        if: steps.check.outputs.should_build == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_VERSION: ${{ env.VERSION }}
+        run: |
+          mapfile -t ASSETS < <(gh release view autobuild-latest --json assets --jq '.assets[].name')
+          for ASSET in "${ASSETS[@]}"; do
+            case "$ASSET" in
+              "BiliVideoParser-${PACKAGE_VERSION}.mirai2.jar"|"BiliVideoParser-${PACKAGE_VERSION}-with-dependencies.mirai.jar") ;;
+              BiliVideoParser-*.jar) gh release delete-asset autobuild-latest "$ASSET" --yes ;;
+            esac
+          done

@@ -10,16 +10,16 @@
 
 ---------------------------
 ### 🛠️安装&依赖前置
-1. 从Release中下载最新版本
+1. 从 Release 中选择一种安装包：`*.mirai2.jar` 是单插件包（首次启动时由 Mirai 下载第三方依赖）；`*-with-dependencies.mirai.jar` 已内置第三方 JVM 依赖，适合服务器无法下载依赖时使用。
 2. 将Jar文件放入 _%mirai文件根目录%/Plugins/_ 中
 3. 重新启动你的mirai-console
-4. Enjoy~
+4. 同一时间只安装其中一种包，更新时移除旧版本和另一种包。
 
 #### 🛠️依赖前置（请安装到你搭建机器人的服务器上）
--  [FFmpeg](https://ffmpeg.org/download.html) (v2.0.0版本后不再需要)(以后可能还是要用，暂时不需要)
+- [FFmpeg](https://ffmpeg.org/download.html)：高画质 DASH 音视频合并需要；普通单文件 MP4 下载无需安装。
 - [Mirai-console 2.16版本](https://github.com/mamoe/mirai/releases) 或 [Overflow](https://github.com/MrXiaoM/Overflow/releases)
 > [!IMPORTANT]
-> _v2.0.0版本后不再需要Ffmpeg和yt-dlp_
+> 两种插件包均不包含 FFmpeg 可执行文件。无需安装 yt-dlp。
 
 #### 🛠️指令依赖↓
  - [可选Chat-Command](https://github.com/project-mirai/chat-command)
@@ -44,6 +44,7 @@
 - [x] 视频分p解析
 - [x] 更多自定义配置支持
 - [x] 清晰度选择
+- [x] 扫码登录、会话保存和大会员清晰度
 - [x] 更多...
 
 --------------------------------------------------
@@ -72,7 +73,10 @@ askdownload # 是否开启询问
 thumbnail # 开关下载封面
 setminduration # 设置最小时长(分钟)
 setmaxduration # 设置最大时长(分钟)
-setquality # 设置清晰度 (80, 64, 32, 16)
+login # 扫码登录B站
+loginstatus # 查看登录账号和大会员状态
+logout # 取消扫码并清除本地登录和手动 Cookie
+setquality # 设置清晰度 (16,32,64,74,80,112,116,120,127)
 ```
 
 -----------------------------------------
@@ -108,12 +112,28 @@ mirai论坛好像炸了 之前的图片都失效了
 | maximumDuration  | 允许解析的视频最大时长（分钟），0为不限制           | 25                   | &number&         |
 | minDurationTip  | 视频过短时的提示语                                | '视频太短啦！不看不看~'     | /         |
 | maxDurationTip  | 视频过长时的提示语                                 | '视频太长啦！内容还是去B站看吧~'       | /       |
-| videoQuality  | 视频解析清晰度 (80=1080P, 64=720P, 32=480P, 16=360P)。可用画质受登录状态限制，不可用时尝试 360P | 16 | &number& |
+| videoQuality | 视频清晰度：16=360P、32=480P、64=720P、74=720P60、80=1080P、112=1080P+、116=1080P60、120=4K、127=8K | 16 | 对应数字 |
 | bilibiliCookie | 可选的 B站 Cookie；服务器遇到 HTTP 412/-352 风控时可配置，留空为游客模式 | 空字符串 | 浏览器 Cookie |
+| ffmpegPath | FFmpeg 可执行文件路径，用于合并 DASH 音视频 | ffmpeg | PATH 中的命令或完整路径 |
+
+### 扫码登录与大会员清晰度（v2.4.0）
+
+1. 在机器人控制台或配置中 `adminQQs` 管理员的聊天中执行 `/bvp login`。聊天中会发送二维码；控制台会输出 `data/com.bcz.bilivideoparser/login-qrcode.png` 的本机路径。
+2. 使用哔哩哔哩 APP 扫码，并在手机上确认登录。二维码有效期约 3 分钟，同一时间只允许一项扫码任务；超时后重新执行命令。
+3. 登录成功后，会话自动写入插件数据目录的 `bilibili-session.json`，重启后自动恢复，无需将 Cookie 粘贴进 YAML。扫码过程使用新会话；保存成功后替换旧会话并清空手动 Cookie，避免新登录与旧票据混用。视频、动态、专栏请求共用新会话及设备 Cookie。
+4. 执行 `/bvp loginstatus` 可查看当前账号及大会员状态。会话失效后重新执行 `/bvp login`。执行 `/bvp logout` 会取消扫码并删除本地会话、清空手动 Cookie，之后使用游客模式；它不会注销手机或浏览器上的账号。
+
+登录管理命令仅允许 `adminQQs` 中的管理员及控制台使用，不会因为授予了普通配置命令权限就允许修改登录账号。登录二维码与会话文件请仅交给账号使用者，不要提交到仓库。
+
+大会员清晰度需要使用已开通大会员的账号，并且视频本身提供对应画质。例如 `/bvp setquality 116` 选择 1080P60，`/bvp setquality 120` 选择 4K。高画质优先获取 DASH 视频和音频，用 FFmpeg 无损合并后发送；无法使用所选画质时，会提示实际选用的较低画质。部分高分辨率流采用 HEVC/AV1，播放兼容性取决于 QQ 客户端。
+
+安装 FFmpeg 并加入 PATH，或在配置中设置完整路径，例如 `ffmpegPath: 'C:\tools\ffmpeg\bin\ffmpeg.exe'`。未安装时仍可下载单文件 MP4，但可能降级到较低画质。
+
+请求客户端使用共享的 Cookie 容器、连接池和压缩响应解码，并初始化站点下发的设备 Cookie。扫码登录可更新会话，但不能保证解除所有风控；浏览器与 JVM 的网络行为仍有差异。若仍出现 HTTP 412/-352，请提供错误码和 `/bvp loginstatus` 的结果，不要提供会话文件或完整 Cookie。
 
 ### HTTP 412 / -352 与视频解析失败
 
-从 v2.3.4 起，视频详情优先使用 WBI 签名接口，失败后依次尝试旧接口和视频网页内的数据。播放解析同样使用签名接口，优先请求包含音视频的单文件 MP4，并在所选画质不可用时尝试 360P；无需 FFmpeg。下载会尝试 B站返回的备用 CDN 地址。
+视频详情优先使用 WBI 签名接口，失败后依次尝试旧接口和视频网页内的数据。播放解析同样使用签名接口，并尝试 B站返回的备用 CDN 地址。v2.4.0 起支持上述扫码登录及高画质 DASH 合并；单文件 MP4 仍无需 FFmpeg。
 
 若机器人所在服务器仍受到风控，在 `config/com.bcz.bilivideoparser/BiliVideoParserConfig.yml` 中配置 Cookie 后重启机器人。推荐使用 YAML 字面量块，避免 Cookie 内的引号、竖线等字符破坏配置格式：
 
@@ -127,6 +147,12 @@ bilibiliCookie: |-
 Cookie 可从自己已登录的 B站网页开发者工具 → Network → 发往 `api.bilibili.com` 的请求 → Request Headers → Cookie 复制。Cookie 属于登录凭据，请仅保存在机器人本地配置中，不要提交到仓库或发送到群聊；过期后需更新。签名和 Cookie 无法保证解除服务器 IP 层面的风控。
 
 若全部解析方式失败，插件会显示失败提示并记录各次请求的 HTTP 状态或接口错误码，且不会把失败结果放入 30 秒冷却。排查时请提供错误码，不要提供 Cookie。
+
+### 本地构建与发布包
+
+使用 JDK 17 执行 `./gradlew clean verifyReleaseArtifacts`（Windows 使用 `gradlew.bat`）。该命令运行测试并在 `build/release` 中生成及检查两种安装包。正式 Release 和 AutoBuild 均上传这里的两种 JAR；普通开发用的 `build/libs` JAR 不作为安装包发布。
+
+扫码协议与会话处理参考：[登录功能需求 #16](https://github.com/BestBcz/BiliURL/issues/16)、[bilibili-dynamic-mirai-plugin](https://github.com/heartalborada-del/bilibili-dynamic-mirai-plugin)、[扫码登录接口](https://github.com/bilibili-plugins/bilibili-api-collect/blob/master/docs/login/login_action/QR.md)。
 
 -------------------------------------------
 

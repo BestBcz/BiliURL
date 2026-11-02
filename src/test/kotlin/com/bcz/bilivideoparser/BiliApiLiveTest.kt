@@ -11,6 +11,22 @@ import kotlin.test.assertTrue
 /** Optional smoke test: set BILIURL_LIVE_TESTS=true to contact Bilibili. */
 class BiliApiLiveTest {
     @Test
+    fun `passport generates a QR ticket and reports an unscanned state`() {
+        assumeTrue(System.getenv("BILIURL_LIVE_TESTS") == "true")
+        val http = BiliHttpClient()
+        try {
+            http.prepareBrowserSession()
+            val login = BiliLoginApi(http::get)
+            val ticket = login.generate()
+            assertTrue(ticket.url.startsWith("https://passport.bilibili.com/") || ticket.url.startsWith("https://account.bilibili.com/"))
+            assertEquals(BiliLoginApi.Status.WAITING, login.poll(ticket.key).status)
+            println("Verified QR generation and unscanned polling response; no account login performed")
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
     fun `reported videos have metadata and readable MP4 streams`() {
         assumeTrue(System.getenv("BILIURL_LIVE_TESTS") == "true")
         val client = BiliApiClient(warning = { println(it) })

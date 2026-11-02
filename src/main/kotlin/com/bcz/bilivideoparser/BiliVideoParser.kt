@@ -28,15 +28,16 @@ object BiliVideoParser : KotlinPlugin(
     JvmPluginDescription(
         id = "com.bcz.bilivideoparser",
         name = "BiliVideoParser",
-        version = "2.3.4"
+        version = "2.4.0"
     ) {
         author("Bcz")
     }
 ) {
-    private val biliApi = BiliApiClient(
-        cookie = { Config.bilibiliCookie },
-        warning = { logger.warning(it) }
-    )
+    internal val biliHttp by lazy { BiliHttpClient({ Config.bilibiliCookie }, { logger.warning(it) }) }
+    private val biliApi by lazy { BiliApiClient(warning = { logger.warning(it) }, http = biliHttp) }
+    internal val biliLogin by lazy {
+        BiliLoginService(biliHttp, BiliLoginStore(File(dataFolder, "bilibili-session.json")), this, dataFolder) { logger.warning(it) }
+    }
 
     // 冷却缓存
     private val parseCache = ConcurrentHashMap<String, Long>()
@@ -486,7 +487,7 @@ object BiliVideoParser : KotlinPlugin(
         val dynamicId = BiliDynamicParser.extractDynamicIdFromAnyUrl(resolvedUrl)
         if (dynamicId != null) {
             if (isRateLimited(dynamicId, "Dynamic")) return true
-            val dynamicResult = BiliDynamicParser.parseDynamic(resolvedUrl, qqAppJson)
+            val dynamicResult = withContext(Dispatchers.IO) { BiliDynamicParser.parseDynamic(resolvedUrl, qqAppJson) }
             if (dynamicResult != null) {
                 BiliDynamicParser.sendDynamicMessage(group, dynamicResult)
                 return true
@@ -496,7 +497,7 @@ object BiliVideoParser : KotlinPlugin(
         val articleId = BiliArticleParser.extractArticleIdFromAnyUrl(resolvedUrl)
         if (articleId != null) {
             if (isRateLimited("cv$articleId", "Article")) return true
-            val articleResult = BiliArticleParser.parseArticle(resolvedUrl, qqAppJson)
+            val articleResult = withContext(Dispatchers.IO) { BiliArticleParser.parseArticle(resolvedUrl, qqAppJson) }
             if (articleResult != null) {
                 sendArticleMessage(group, articleResult)
                 return true
@@ -561,20 +562,38 @@ object BiliVideoParser : KotlinPlugin(
         if (cid != null) {
             try {
                 // 在 IO 线程中执行网络请求
-                val videoUrls = withContext(Dispatchers.IO) {
-                    biliApi.getPlaybackUrls(video.bvId, cid, Config.videoQuality)
+                val requestedQuality = Config.videoQuality.toIntOrNull() ?: 16
+                val muxer = FfmpegMuxer(Config.ffmpegPath.ifBlank { "ffmpeg" })
+                val allowDash = withContext(Dispatchers.IO) { requestedQuality > 16 && muxer.available() }
+                val playback = withContext(Dispatchers.IO) {
+                    biliApi.getPlayback(video.bvId, cid, Config.videoQuality, allowDash)
                 }
-                for (candidate in videoUrls) {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            downloadVideoFile(candidate, tempVideoFile, video.longUrl())
+                if (playback.quality < requestedQuality) {
+                    val reason = if (!allowDash && requestedQuality > 64) "未检测到 FFmpeg，高画质 DASH 需要安装 FFmpeg；" else ""
+                    group.sendMessage("${reason}所选 ${VideoQuality.name(requestedQuality)} 不可用，本次使用 ${VideoQuality.name(playback.quality)}。")
+                }
+                withContext(Dispatchers.IO) {
+                    if (playback.dash) {
+                        val videoTrack = File.createTempFile("${video.bvId}-p${video.page}-", ".video.m4s", DOWNLOAD_DIR)
+                        var audioTrack: File? = null
+                        try {
+                            downloadFromMirrors(playback.videoUrls, videoTrack, video.longUrl())
+                            if (playback.audioUrls.isNotEmpty()) {
+                                audioTrack = File.createTempFile("${video.bvId}-p${video.page}-", ".audio.m4s", DOWNLOAD_DIR)
+                                downloadFromMirrors(playback.audioUrls, audioTrack!!, video.longUrl())
+                            }
+                            muxer.mux(videoTrack, audioTrack, tempVideoFile)
+                        } finally {
+                            videoTrack.delete()
+                            audioTrack?.delete()
                         }
-                        success = true
-                        break
-                    } catch (e: IOException) {
-                        logger.warning("视频 CDN 下载失败，尝试备用地址: ${e.message}")
+                    } else {
+                        downloadFromMirrors(playback.videoUrls, tempVideoFile, video.longUrl())
                     }
                 }
+                success = true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.error("❌ [方案B] 原生 API 失败: ${e.message}")
                 // 捕获异常，继续执行方案 A
@@ -657,6 +676,20 @@ object BiliVideoParser : KotlinPlugin(
     }
 
     // 统一的视频文件下载函数
+    private fun downloadFromMirrors(urls: List<String>, destination: File, referer: String) {
+        var lastFailure: IOException? = null
+        for (url in urls) {
+            try {
+                downloadVideoFile(url, destination, referer)
+                return
+            } catch (e: IOException) {
+                lastFailure = e
+                logger.warning("视频 CDN 下载失败，尝试备用地址: ${e.message}")
+            }
+        }
+        throw lastFailure ?: IOException("没有可用的下载地址")
+    }
+
     @Throws(Exception::class)
     private fun downloadVideoFile(videoUrl: String, destination: File, referer: String = "https://www.bilibili.com/") {
         val videoConnection = URL(videoUrl).openConnection() as HttpURLConnection
@@ -720,7 +753,7 @@ object BiliVideoParser : KotlinPlugin(
             logger.error("获取视频详情失败: ${e.message}")
             parseCache.remove(video.rateLimitKey)
             val link = if (Config.enableSendLink) "\n链接: $videoLink" else ""
-            group.sendMessage("❌ 获取视频详情失败，可能受到B站风控限制。请查看控制台日志；可配置 bilibiliCookie 后重试。$link")
+            group.sendMessage("❌ 获取视频详情失败，可能受到B站风控限制。请查看控制台日志；管理员可执行 /bvp login 更新登录会话。$link")
             return
         }
         val selectedPage = details.selectedPage(video.page)
@@ -807,6 +840,7 @@ object BiliVideoParser : KotlinPlugin(
         logger.info("BiliVideoParser 插件已启用")
 
         Config.reload()
+        biliLogin.restore()
         CommandManager.registerCommand(BiliVideoParserCommand)
         cleanupOldFiles()
         startAutoCleanupJob()
@@ -882,6 +916,10 @@ object BiliVideoParser : KotlinPlugin(
                 }
             }
         }
+    }
+
+    override fun onDisable() {
+        biliHttp.close()
     }
 }
 

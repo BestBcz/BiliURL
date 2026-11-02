@@ -1,4 +1,6 @@
 .gradle
+/data/
+/bilidownload/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
